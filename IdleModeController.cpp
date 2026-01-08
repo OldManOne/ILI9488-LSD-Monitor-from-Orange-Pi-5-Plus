@@ -1,4 +1,5 @@
 #include "IdleModeController.h"
+#include <cmath>
 
 IdleModeController::IdleModeController()
     : idle_threshold_seconds(30.0),
@@ -43,7 +44,8 @@ void IdleModeController::update(const SystemMetrics& metrics, double dt) {
 
     // Smooth transition
     double target_progress = _is_idle ? 1.0 : 0.0;
-    // The multiplication by dt makes the transition frame-rate dependent. 
-    // The python code was `* 0.05`, which is a fixed factor. Let's stick to that for now.
-    transition_progress += (target_progress - transition_progress) * 0.05;
+    // Frame-rate independent smoothing: tau = 0.3 seconds
+    const double tau = 0.3;
+    double alpha = 1.0 - std::exp(-dt / tau);
+    transition_progress += (target_progress - transition_progress) * alpha;
 }

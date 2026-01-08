@@ -11,7 +11,6 @@
 #include <ctime>
 #include <unistd.h>
 
-#define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
 // --- Sparkline Visual Zoom Parameters ---

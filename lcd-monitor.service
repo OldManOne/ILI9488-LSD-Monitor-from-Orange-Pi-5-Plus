@@ -5,12 +5,23 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/lcd_monitor
+WorkingDirectory=/usr/local/bin
 Restart=on-failure
 RestartSec=5
+
+# Load environment from file (optional)
+EnvironmentFile=-/etc/default/lcd_monitor
+
+# Default values (overridden by EnvironmentFile)
 Environment=LCD_THEME=neutral
 Environment=LCD_FPS=5
 Environment=LCD_NET_IF1=eth0
 Environment=LCD_NET_IF2=eth1
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

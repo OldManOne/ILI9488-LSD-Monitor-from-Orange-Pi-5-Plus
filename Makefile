@@ -6,7 +6,7 @@ LDFLAGS = -lgpiodcxx -pthread
 TARGET = lcd_monitor
 PREFIX ?= /usr/local
 SYSTEMD_DIR ?= /etc/systemd/system
-SRCS = main.cpp ILI9488.cpp SystemMetrics.cpp Renderer.cpp AnimationEngine.cpp IdleModeController.cpp
+SRCS = main.cpp ILI9488.cpp SystemMetrics.cpp Renderer.cpp AnimationEngine.cpp IdleModeController.cpp stb_truetype_impl.cpp
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
 

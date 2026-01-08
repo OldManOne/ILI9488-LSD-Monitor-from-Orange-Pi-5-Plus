@@ -67,5 +67,40 @@ Environment=LCD_NET_IF2=enP4p65s0
 - ILI9488 работает в **RGB666** (COLMOD=0x66), SPI 16MHz стабильно.
 - Полный кадр по SPI ограничен по FPS, поэтому используется частичная перерисовка.
 
+
+## Установка
+```bash
+make clean && make
+sudo make install
+sudo systemctl daemon-reload
+sudo systemctl enable lcd-monitor
+sudo systemctl start lcd-monitor
+```
+
+## Права доступа
+
+Для работы с SPI и GPIO нужны права:
+```bash
+# Добавить пользователя в группы (альтернатива запуску от root)
+sudo usermod -aG spi,gpio $USER
+
+# Или создать udev-правила для устройств
+echo 'SUBSYSTEM=="spidev", MODE="0666"' | sudo tee /etc/udev/rules.d/50-spi.rules
+echo 'SUBSYSTEM=="gpio", MODE="0666"' | sudo tee /etc/udev/rules.d/50-gpio.rules
+sudo udevadm control --reload-rules
+```
+
+## Логи и отладка
+```bash
+# Просмотр логов
+journalctl -u lcd-monitor -f
+
+# Запуск с отладкой
+LCD_DEBUG=1 ./lcd_monitor
+
+# Проверка SPI
+ls -la /dev/spidev*
+```
+
 ---
 Автор: **OldManOne**
