@@ -171,7 +171,7 @@ double SystemMetrics::getCPUUsage() {
 
     std::string cpu_label;
     ss >> cpu_label;
-    if (cpu_label != "cpu") return;
+    if (cpu_label != "cpu") return 0.0;
 
     uint64_t user, nice, system, idle, iowait, irq, softirq, steal;
     ss >> user >> nice >> system >> idle >> iowait >> irq >> softirq >> steal;
