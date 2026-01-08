@@ -108,7 +108,7 @@ private:
 
     // Font rendering
     std::vector<uint8_t> font_buffer_;
-    void* font_info_; // stbtt_fontinfo
+    void* font_info_ = nullptr; // stbtt_fontinfo
 
     // Histories for sparklines
     std::deque<double> history_cpu_;
