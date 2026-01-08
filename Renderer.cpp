@@ -38,6 +38,15 @@ namespace SparklineZoom {
     constexpr double MIN_RANGE_NET = 1.0;
 }
 
+namespace Layout {
+    constexpr int HEADER_HEIGHT = 42;
+    constexpr int FOOTER_HEIGHT = 44;
+    constexpr int MARGIN = 12;
+    constexpr int GAP = 10;
+    constexpr int LEFT_PANEL_WIDTH = 310;
+    constexpr int VITALS_PANEL_HEIGHT = 160;
+}
+
 // --- Helper Functions ---
 
 // Interpolate between two RGB565 colors
@@ -90,7 +99,7 @@ Renderer::Renderer() {
     grid_enabled_ = getenv_bool("LCD_GRID", false);
     band_enabled_ = getenv_bool("LCD_BAND", false);
 
-    loadFont("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 16.0f);
+    loadFont(getenv_string("LCD_FONT", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"), 16.0f);
 
     history_size_ = (DISPLAY_WIDTH >= 400 ? 120 : 60);
 
@@ -258,11 +267,11 @@ void Renderer::Render(const SystemMetrics& metrics,
         std::fill(buffer.begin(), buffer.end(), bg_top);
     }
 
-    int header_h = 42;
-    int footer_h = 44;
-    int margin = 12;
-    int gap = 10;
-    int left_w = 310;
+    int header_h = Layout::HEADER_HEIGHT;
+    int footer_h = Layout::FOOTER_HEIGHT;
+    int margin = Layout::MARGIN;
+    int gap = Layout::GAP;
+    int left_w = Layout::LEFT_PANEL_WIDTH;
     int right_w = DISPLAY_WIDTH - 2 * margin - gap - left_w;
 
     int content_y0 = header_h + 10;
@@ -282,7 +291,7 @@ void Renderer::Render(const SystemMetrics& metrics,
     int r1_x = g1_x + g1_w + gap;
     int r1_y = content_y0;
     int r1_w = right_w;
-    int r1_h = 160;
+    int r1_h = Layout::VITALS_PANEL_HEIGHT;
 
     int r2_x = r1_x;
     int r2_y = r1_y + r1_h + gap;

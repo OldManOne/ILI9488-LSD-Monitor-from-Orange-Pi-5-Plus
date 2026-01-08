@@ -7,6 +7,7 @@ IdleModeController::IdleModeController()
       transition_progress(0.0) {}
 
 bool IdleModeController::is_idle() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return _is_idle;
 }
 

@@ -41,6 +41,7 @@ Environment=LCD_NET_IF2=enP4p65s0
 - **LCD_DIRTY_TILE** — размер тайла dirty‑rect
 - **LCD_FULL_FRAME_THRESHOLD** — порог полного кадра
 - **LCD_THEME** — имя темы (`neutral`, `orange`, ...)
+- **LCD_FONT** — путь к TTF‑шрифту (по умолчанию `/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf`)
 - **LCD_NET_IF1 / LCD_NET_IF2** — интерфейсы сети
 - **LCD_NET_AUTOSCALE** — авто‑масштаб графика
 

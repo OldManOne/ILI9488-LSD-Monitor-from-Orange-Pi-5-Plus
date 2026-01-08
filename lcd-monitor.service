@@ -1,0 +1,16 @@
+[Unit]
+Description=LCD System Monitor for ILI9488
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/lcd_monitor
+Restart=on-failure
+RestartSec=5
+Environment=LCD_THEME=neutral
+Environment=LCD_FPS=5
+Environment=LCD_NET_IF1=eth0
+Environment=LCD_NET_IF2=eth1
+
+[Install]
+WantedBy=multi-user.target
