@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "ILI9488.h"
 #include "Theme.h"
+#include "utils.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -75,8 +76,10 @@ static color_t scale_color(color_t c, float factor) {
 // --- Renderer Implementation ---
 
 Renderer::Renderer() {
-    const char* theme_env = std::getenv("LCD_THEME");
-    theme_name_ = theme_env ? std::string(theme_env) : "neutral";
+    idle_t_ = 0.0f;
+    net1_scale_max_ = 0.0;
+    net2_scale_max_ = 0.0;
+    theme_name_ = getenv_string("LCD_THEME", "neutral");
     if (THEMES.count(theme_name_)) {
         current_theme_ = THEMES.at(theme_name_);
     } else {
@@ -84,20 +87,8 @@ Renderer::Renderer() {
         theme_name_ = "neutral";
     }
 
-    const char* grid_env = std::getenv("LCD_GRID");
-    if (!grid_env) {
-        grid_enabled_ = false;
-    } else {
-        std::string gv(grid_env);
-        grid_enabled_ = (gv == "1" || gv == "true" || gv == "yes" || gv == "on");
-    }
-    const char* band_env = std::getenv("LCD_BAND");
-    if (!band_env) {
-        band_enabled_ = false;
-    } else {
-        std::string bv(band_env);
-        band_enabled_ = (bv == "1" || bv == "true" || bv == "yes" || bv == "on");
-    }
+    grid_enabled_ = getenv_bool("LCD_GRID", false);
+    band_enabled_ = getenv_bool("LCD_BAND", false);
 
     loadFont("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 16.0f);
 
@@ -112,27 +103,11 @@ Renderer::Renderer() {
     ticker_offset_px_ = 0.0f;
     ticker_speed_px_ = 1.0f;
 
-    const char* autoscale_env = std::getenv("LCD_NET_AUTOSCALE");
-    if (autoscale_env) {
-        std::string v(autoscale_env);
-        net_autoscale_ = (v == "1" || v == "true" || v == "yes" || v == "on");
-    }
-    const char* pctl_env = std::getenv("LCD_NET_AUTOSCALE_PCTL");
-    if (pctl_env) {
-        try { net_autoscale_pctl_ = std::stod(pctl_env); } catch (...) {}
-    }
-    const char* min_env = std::getenv("LCD_NET_AUTOSCALE_MIN");
-    if (min_env) {
-        try { net_autoscale_min_ = std::stod(min_env); } catch (...) {}
-    }
-    const char* max_env = std::getenv("LCD_NET_AUTOSCALE_MAX");
-    if (max_env) {
-        try { net_autoscale_max_ = std::stod(max_env); } catch (...) {}
-    }
-    const char* ema_env = std::getenv("LCD_NET_AUTOSCALE_EMA");
-    if (ema_env) {
-        try { net_autoscale_ema_ = std::stod(ema_env); } catch (...) {}
-    }
+    net_autoscale_ = getenv_bool("LCD_NET_AUTOSCALE", net_autoscale_);
+    net_autoscale_pctl_ = getenv_double("LCD_NET_AUTOSCALE_PCTL", net_autoscale_pctl_);
+    net_autoscale_min_ = getenv_double("LCD_NET_AUTOSCALE_MIN", net_autoscale_min_);
+    net_autoscale_max_ = getenv_double("LCD_NET_AUTOSCALE_MAX", net_autoscale_max_);
+    net_autoscale_ema_ = getenv_double("LCD_NET_AUTOSCALE_EMA", net_autoscale_ema_);
 }
 
 Renderer::~Renderer() {
@@ -1013,9 +988,9 @@ void Renderer::drawHeader(int x, int y, int w, int h, const SystemMetrics& metri
     drawLine(x, y + h - 1, x + w - 1, y + h - 1, current_theme_.bar_border);
     static std::string title;
     if (title.empty()) {
-        const char* env = std::getenv("LCD_TITLE");
-        if (env && *env) {
-            title = env;
+        std::string env_title = getenv_string("LCD_TITLE", "");
+        if (!env_title.empty()) {
+            title = env_title;
         } else {
             char host[128] = {0};
             if (gethostname(host, sizeof(host) - 1) == 0 && host[0]) {

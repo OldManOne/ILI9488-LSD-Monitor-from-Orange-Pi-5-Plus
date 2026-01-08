@@ -9,6 +9,7 @@
 #include <mutex>
 #include <atomic>
 #include <deque>
+#include <utility>
 
 class SystemMetrics {
 public:
@@ -39,15 +40,15 @@ private:
     std::string exec(const char* cmd);
     bool exec_with_timeout(const char* cmd, int timeout_sec, std::string& output);
 
-    void getCPUUsage();
-    void getMemoryUsage();
-    void getCPUTemp();
+    double getCPUUsage();
+    void getMemoryUsage(double& percent, int& used_mb);
+    double getCPUTemp();
     void getNetworkSpeed(const std::string& interface_name, double& speed);
-    void getUptime();
-    void updateDockerInfo();
-    void updateDiskUsage();
-    void updateWireGuardPeers();
-    void updateMinecraftPlayers();
+    int getUptime();
+    int updateDockerInfo();
+    int updateDiskUsage();
+    int updateWireGuardPeers();
+    std::pair<int, int> updateMinecraftPlayers();
     void metrics_worker_func();
     
     // WAN Monitoring
@@ -85,6 +86,8 @@ private:
     int mc_rcon_timeout_ms_ = 1500;
     int mc_rcon_interval_ms_ = 2000;
     std::chrono::steady_clock::time_point mc_last_poll_ = std::chrono::steady_clock::now();
+    int mc_cached_online_ = -1;
+    int mc_cached_max_ = -1;
 
     struct MetricsSnapshot {
         double cpu_usage = 0;

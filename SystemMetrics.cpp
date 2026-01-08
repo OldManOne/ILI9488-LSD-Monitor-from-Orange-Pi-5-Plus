@@ -1,4 +1,5 @@
 #include "SystemMetrics.h"
+#include "utils.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -25,40 +26,15 @@
 // --- Constructor / Destructor ---
 
 SystemMetrics::SystemMetrics() {
-    const char* dbg = std::getenv("LCD_DEBUG");
-    debug_ = dbg && (std::string(dbg) == "1" || std::string(dbg) == "true" || std::string(dbg) == "yes" || std::string(dbg) == "on" || std::string(dbg) == "debug");
-    const char* wg_env = std::getenv("LCD_WG_ACTIVE_SEC");
-    if (wg_env) {
-        try { wg_active_window_s_ = std::stoi(wg_env); } catch (...) {}
-    }
-    const char* if1 = std::getenv("LCD_NET_IF1");
-    if (if1 && *if1) {
-        net_if1_ = if1;
-    }
-    const char* if2 = std::getenv("LCD_NET_IF2");
-    if (if2 && *if2) {
-        net_if2_ = if2;
-    }
-    const char* mc_host = std::getenv("LCD_MC_RCON_HOST");
-    if (mc_host && *mc_host) {
-        mc_rcon_host_ = mc_host;
-    }
-    const char* mc_port = std::getenv("LCD_MC_RCON_PORT");
-    if (mc_port && *mc_port) {
-        try { mc_rcon_port_ = std::stoi(mc_port); } catch (...) {}
-    }
-    const char* mc_pass = std::getenv("LCD_MC_RCON_PASS");
-    if (mc_pass && *mc_pass) {
-        mc_rcon_pass_ = mc_pass;
-    }
-    const char* mc_timeout = std::getenv("LCD_MC_RCON_TIMEOUT_MS");
-    if (mc_timeout && *mc_timeout) {
-        try { mc_rcon_timeout_ms_ = std::stoi(mc_timeout); } catch (...) {}
-    }
-    const char* mc_interval = std::getenv("LCD_MC_RCON_INTERVAL_MS");
-    if (mc_interval && *mc_interval) {
-        try { mc_rcon_interval_ms_ = std::stoi(mc_interval); } catch (...) {}
-    }
+    debug_ = getenv_bool("LCD_DEBUG", false);
+    wg_active_window_s_ = getenv_int("LCD_WG_ACTIVE_SEC", wg_active_window_s_);
+    net_if1_ = getenv_string("LCD_NET_IF1", net_if1_);
+    net_if2_ = getenv_string("LCD_NET_IF2", net_if2_);
+    mc_rcon_host_ = getenv_string("LCD_MC_RCON_HOST", mc_rcon_host_);
+    mc_rcon_port_ = getenv_int("LCD_MC_RCON_PORT", mc_rcon_port_);
+    mc_rcon_pass_ = getenv_string("LCD_MC_RCON_PASS", mc_rcon_pass_);
+    mc_rcon_timeout_ms_ = getenv_int("LCD_MC_RCON_TIMEOUT_MS", mc_rcon_timeout_ms_);
+    mc_rcon_interval_ms_ = getenv_int("LCD_MC_RCON_INTERVAL_MS", mc_rcon_interval_ms_);
 }
 
 SystemMetrics::~SystemMetrics() {
@@ -187,7 +163,7 @@ std::string SystemMetrics::get_wan_status() const {
 
 // --- Metric Gathering ---
 
-void SystemMetrics::getCPUUsage() {
+double SystemMetrics::getCPUUsage() {
     std::ifstream stat_file("/proc/stat");
     std::string line;
     std::getline(stat_file, line);
@@ -203,21 +179,21 @@ void SystemMetrics::getCPUUsage() {
     uint64_t current_idle = idle + iowait;
     uint64_t current_total = user + nice + system + current_idle + irq + softirq + steal;
 
+    double usage = 0.0;
     if (prev_cpu_total_ > 0) {
         double total_delta = static_cast<double>(current_total - prev_cpu_total_);
         double idle_delta = static_cast<double>(current_idle - prev_cpu_idle_);
         if (total_delta > 0) {
-            cpu_usage = 100.0 * (1.0 - idle_delta / total_delta);
-        } else {
-            cpu_usage = 0.0;
+            usage = 100.0 * (1.0 - idle_delta / total_delta);
         }
     }
 
     prev_cpu_total_ = current_total;
     prev_cpu_idle_ = current_idle;
+    return usage;
 }
 
-void SystemMetrics::getMemoryUsage() {
+void SystemMetrics::getMemoryUsage(double& percent, int& used_mb) {
     std::ifstream meminfo_file("/proc/meminfo");
     std::string line;
     uint64_t mem_total = 0, mem_available = 0;
@@ -235,12 +211,12 @@ void SystemMetrics::getMemoryUsage() {
 
     if (mem_total > 0) {
         uint64_t mem_used = mem_total - mem_available;
-        mem_percent = (static_cast<double>(mem_used) / mem_total) * 100.0;
-        mem_used_mb = mem_used / 1024;
+        percent = (static_cast<double>(mem_used) / mem_total) * 100.0;
+        used_mb = static_cast<int>(mem_used / 1024);
     }
 }
 
-void SystemMetrics::getCPUTemp() {
+double SystemMetrics::getCPUTemp() {
     for (int i = 0; i < 5; ++i) {
         std::string path = "/sys/class/thermal/thermal_zone" + std::to_string(i) + "/temp";
         std::ifstream temp_file(path);
@@ -249,12 +225,11 @@ void SystemMetrics::getCPUTemp() {
             temp_file >> temp_milli_c;
             double temp_c = static_cast<double>(temp_milli_c) / 1000.0;
             if (temp_c > 20 && temp_c < 120) {
-                temp = temp_c;
-                return;
+                return temp_c;
             }
         }
     }
-    temp = 0.0;
+    return 0.0;
 }
 
 void SystemMetrics::getNetworkSpeed(const std::string& interface_name, double& speed) {
@@ -301,19 +276,18 @@ void SystemMetrics::getNetworkSpeed(const std::string& interface_name, double& s
     prev_net_stats_[interface_name] = {current_bytes, now};
 }
 
-void SystemMetrics::getUptime() {
+int SystemMetrics::getUptime() {
     std::ifstream uptime_file("/proc/uptime");
     double uptime;
     uptime_file >> uptime;
-    uptime_seconds = static_cast<int>(uptime);
+    return static_cast<int>(uptime);
 }
 
-void SystemMetrics::updateDockerInfo() {
+int SystemMetrics::updateDockerInfo() {
     try {
         std::string output;
         if (!exec_with_timeout("docker ps -q 2>/dev/null", 5, output)) {
-            docker_running = -1;
-            return;
+            return -1;
         }
         int count = 0;
         std::stringstream ss(output);
@@ -321,13 +295,13 @@ void SystemMetrics::updateDockerInfo() {
         while (std::getline(ss, line)) {
             if (!line.empty()) count++;
         }
-        docker_running = count;
+        return count;
     } catch (...) {
-        docker_running = -1;
+        return -1;
     }
 }
 
-void SystemMetrics::updateDiskUsage() {
+int SystemMetrics::updateDiskUsage() {
     try {
         std::ifstream statf("/proc/self/mounts");
         std::string line;
@@ -339,10 +313,10 @@ void SystemMetrics::updateDiskUsage() {
                     unsigned long long free = vfs.f_bavail * vfs.f_frsize;
                     unsigned long long used = total - free;
                     if (total > 0) {
-                        disk_percent = static_cast<int>((used * 100ULL) / total);
+                        return static_cast<int>((used * 100ULL) / total);
                     }
                 }
-                return;
+                return -1;
             }
         }
         // fallback
@@ -352,24 +326,22 @@ void SystemMetrics::updateDiskUsage() {
             unsigned long long free = vfs.f_bavail * vfs.f_frsize;
             unsigned long long used = total - free;
             if (total > 0) {
-                disk_percent = static_cast<int>((used * 100ULL) / total);
+                return static_cast<int>((used * 100ULL) / total);
             }
         }
     } catch (...) {
-        disk_percent = -1;
     }
+    return -1;
 }
 
-void SystemMetrics::updateWireGuardPeers() {
+int SystemMetrics::updateWireGuardPeers() {
     try {
         std::string output;
         if (!exec_with_timeout("wg show wg0 latest-handshakes 2>/dev/null", 5, output)) {
-            wg_active_peers = -1;
-            return;
+            return -1;
         }
         if (output.empty()) {
-            wg_active_peers = 0;
-            return;
+            return 0;
         }
         std::stringstream ss(output);
         std::string line;
@@ -387,21 +359,19 @@ void SystemMetrics::updateWireGuardPeers() {
                 count++;
             }
         }
-        wg_active_peers = count;
+        return count;
     } catch (...) {
-        wg_active_peers = -1;
+        return -1;
     }
 }
 
-void SystemMetrics::updateMinecraftPlayers() {
+std::pair<int, int> SystemMetrics::updateMinecraftPlayers() {
     if (mc_rcon_pass_.empty()) {
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        return {-1, -1};
     }
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - mc_last_poll_).count();
-    if (elapsed < mc_rcon_interval_ms_) return;
+    if (elapsed < mc_rcon_interval_ms_) return {mc_cached_online_, mc_cached_max_};
     mc_last_poll_ = now;
 
     auto read_full = [&](int fd, void* buf, size_t len, int timeout_ms) -> bool {
@@ -461,9 +431,9 @@ void SystemMetrics::updateMinecraftPlayers() {
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* res = nullptr;
     if (getaddrinfo(mc_rcon_host_.c_str(), std::to_string(mc_rcon_port_).c_str(), &hints, &res) != 0) {
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
     for (addrinfo* p = res; p; p = p->ai_next) {
         sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -474,56 +444,58 @@ void SystemMetrics::updateMinecraftPlayers() {
     }
     freeaddrinfo(res);
     if (sock < 0) {
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
 
     int32_t id = 1;
     if (!send_packet(sock, id, 3, mc_rcon_pass_)) {
         close(sock);
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
     int32_t rid = 0, rtype = 0;
     std::string rpayload;
     if (!recv_packet(sock, rid, rtype, rpayload) || rid == -1) {
         close(sock);
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
 
     id = 2;
     if (!send_packet(sock, id, 2, "list")) {
         close(sock);
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
     if (!recv_packet(sock, rid, rtype, rpayload)) {
         close(sock);
-        mc_online = -1;
-        mc_max = -1;
-        return;
+        mc_cached_online_ = -1;
+        mc_cached_max_ = -1;
+        return {mc_cached_online_, mc_cached_max_};
     }
     close(sock);
 
-    std::regex re(R"(There are (\d+) of a max of (\d+) players online)");
+    static const std::regex re(R"(There are (\d+) of a max of (\d+) players online)");
     std::smatch m;
     if (std::regex_search(rpayload, m, re) && m.size() >= 3) {
         try {
-            mc_online = std::stoi(m[1].str());
-            mc_max = std::stoi(m[2].str());
+            mc_cached_online_ = std::stoi(m[1].str());
+            mc_cached_max_ = std::stoi(m[2].str());
+            return {mc_cached_online_, mc_cached_max_};
         } catch (...) {
-            mc_online = -1;
-            mc_max = -1;
+            mc_cached_online_ = -1;
+            mc_cached_max_ = -1;
+            return {mc_cached_online_, mc_cached_max_};
         }
-    } else {
-        mc_online = -1;
-        mc_max = -1;
     }
+    mc_cached_online_ = -1;
+    mc_cached_max_ = -1;
+    return {mc_cached_online_, mc_cached_max_};
 }
 
 void SystemMetrics::metrics_worker_func() {
@@ -532,16 +504,18 @@ void SystemMetrics::metrics_worker_func() {
     while (running_) {
         MetricsSnapshot snap;
 
-        getCPUUsage();  snap.cpu_usage = cpu_usage;
-        getMemoryUsage(); snap.mem_percent = mem_percent; snap.mem_used_mb = mem_used_mb;
-        getCPUTemp(); snap.temp = temp;
+        snap.cpu_usage = getCPUUsage();
+        getMemoryUsage(snap.mem_percent, snap.mem_used_mb);
+        snap.temp = getCPUTemp();
         getNetworkSpeed(net_if1_, snap.net1_mbps);
         getNetworkSpeed(net_if2_, snap.net2_mbps);
-        getUptime(); snap.uptime_seconds = uptime_seconds;
-        updateDockerInfo(); snap.docker_running = docker_running;
-        updateDiskUsage(); snap.disk_percent = disk_percent;
-        updateWireGuardPeers(); snap.wg_active_peers = wg_active_peers;
-        updateMinecraftPlayers(); snap.mc_online = mc_online; snap.mc_max = mc_max;
+        snap.uptime_seconds = getUptime();
+        snap.docker_running = updateDockerInfo();
+        snap.disk_percent = updateDiskUsage();
+        snap.wg_active_peers = updateWireGuardPeers();
+        auto mc = updateMinecraftPlayers();
+        snap.mc_online = mc.first;
+        snap.mc_max = mc.second;
 
         {
             std::lock_guard<std::mutex> lock(snapshot_mutex_);

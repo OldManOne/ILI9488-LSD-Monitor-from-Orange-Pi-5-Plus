@@ -11,10 +11,12 @@ bool IdleModeController::is_idle() const {
 }
 
 double IdleModeController::get_transition_progress() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return transition_progress;
 }
 
 void IdleModeController::update(const SystemMetrics& metrics, double dt) {
+    std::lock_guard<std::mutex> lock(mutex_);
     // This is a stand-in for the actual metric access.
     // We will need to implement public members or getters in SystemMetrics later.
     bool system_is_idle = (metrics.cpu_usage < 10.0 &&

@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include "utils.h"
 
 namespace {
 constexpr uint8_t ILI9488_PIXFMT_18BPP = 0x66; // RGB666
@@ -17,33 +18,6 @@ constexpr uint8_t ILI9488_MADCTL_LANDSCAPE = 0x28; // MV|BGR
 constexpr uint32_t SPI_SPEED_HZ_DEFAULT = 16000000;
 constexpr uint32_t SPI_SPEED_HZ_MAX = 24000000;
 constexpr size_t CHUNK_SIZE_DEFAULT = 1024;
-
-static uint32_t getenv_u32(const char* name, uint32_t def) {
-    const char* v = std::getenv(name);
-    if (!v) return def;
-    char* end = nullptr;
-    unsigned long val = std::strtoul(v, &end, 10);
-    if (!end || *end != '\0') return def;
-    return static_cast<uint32_t>(val);
-}
-
-static size_t getenv_szt(const char* name, size_t def) {
-    const char* v = std::getenv(name);
-    if (!v) return def;
-    char* end = nullptr;
-    unsigned long val = std::strtoul(v, &end, 10);
-    if (!end || *end != '\0') return def;
-    return static_cast<size_t>(val);
-}
-
-static unsigned int getenv_uint(const char* name, unsigned int def) {
-    const char* v = std::getenv(name);
-    if (!v) return def;
-    char* end = nullptr;
-    unsigned long val = std::strtoul(v, &end, 10);
-    if (!end || *end != '\0') return def;
-    return static_cast<unsigned int>(val);
-}
 }
 
 ILI9488::ILI9488(const std::string& spi_device,
@@ -102,15 +76,15 @@ bool ILI9488::Init() {
 
     uint8_t mode = SPI_MODE_0;
     uint8_t bits = 8;
-    spi_speed_hz_ = getenv_u32("ILI9488_SPI_SPEED_HZ", SPI_SPEED_HZ_DEFAULT);
+    spi_speed_hz_ = static_cast<uint32_t>(getenv_int("ILI9488_SPI_SPEED_HZ", SPI_SPEED_HZ_DEFAULT));
     if (spi_speed_hz_ > SPI_SPEED_HZ_MAX) spi_speed_hz_ = SPI_SPEED_HZ_MAX;
-    chunk_size_bytes_ = getenv_szt("ILI9488_SPI_CHUNK", CHUNK_SIZE_DEFAULT);
+    chunk_size_bytes_ = static_cast<size_t>(getenv_int("ILI9488_SPI_CHUNK", static_cast<int>(CHUNK_SIZE_DEFAULT)));
     if (chunk_size_bytes_ < 3) chunk_size_bytes_ = 3;
     if (chunk_size_bytes_ % 3 != 0) {
         chunk_size_bytes_ -= (chunk_size_bytes_ % 3);
         if (chunk_size_bytes_ < 3) chunk_size_bytes_ = 3;
     }
-    throttle_us_ = getenv_uint("ILI9488_SPI_THROTTLE_US", 0);
+    throttle_us_ = static_cast<unsigned int>(getenv_int("ILI9488_SPI_THROTTLE_US", 0));
     uint32_t speed = spi_speed_hz_;
 
     std::cout << "  Setting SPI parameters..." << std::endl << std::flush;

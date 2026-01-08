@@ -3,6 +3,7 @@
 #include "Renderer.h"
 #include "AnimationEngine.h"
 #include "IdleModeController.h"
+#include "utils.h"
 #include <iostream>
 #include <vector>
 #include <unistd.h>
@@ -15,18 +16,6 @@
 
 static volatile sig_atomic_t running = 1;
 static void signal_handler(int) { running = 0; }
-
-static int getenv_int(const char* name, int def) {
-    const char* v = std::getenv(name);
-    if (!v) return def;
-    try { return std::stoi(v); } catch (...) { return def; }
-}
-
-static double getenv_double(const char* name, double def) {
-    const char* v = std::getenv(name);
-    if (!v) return def;
-    try { return std::stod(v); } catch (...) { return def; }
-}
 
 struct Rect {
     int x;

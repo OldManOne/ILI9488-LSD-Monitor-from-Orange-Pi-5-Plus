@@ -3,6 +3,7 @@
 
 #include "SystemMetrics.h"
 #include <chrono>
+#include <mutex>
 
 class IdleModeController {
 public:
@@ -15,6 +16,7 @@ public:
     double get_transition_progress() const;
 
 private:
+    mutable std::mutex mutex_;
     const double idle_threshold_seconds;
     std::chrono::steady_clock::time_point idle_start_time;
     bool _is_idle;
