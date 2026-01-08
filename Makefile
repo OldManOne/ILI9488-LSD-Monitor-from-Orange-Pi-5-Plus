@@ -10,6 +10,8 @@ SRCS = main.cpp ILI9488.cpp SystemMetrics.cpp Renderer.cpp AnimationEngine.cpp I
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
 
+.PHONY: all clean install uninstall
+
 all: $(TARGET)
 
 $(TARGET): $(OBJS)

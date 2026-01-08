@@ -102,5 +102,42 @@ LCD_DEBUG=1 ./lcd_monitor
 ls -la /dev/spidev*
 ```
 
+
+## Troubleshooting
+
+### SPI не работает
+```bash
+# Проверить наличие устройства
+ls -la /dev/spidev*
+
+# Проверить скорость (если артефакты — снизить)
+ILI9488_SPI_SPEED_HZ=8000000 ./lcd_monitor
+```
+
+### Ошибки systemd
+```bash
+# Статус сервиса
+systemctl status lcd-monitor
+
+# Подробные логи
+journalctl -u lcd-monitor -f --no-pager
+```
+
+### Права доступа
+Если ошибка "Permission denied" на /dev/spidev* или /dev/gpiochip*:
+- Либо запускать от root
+- Либо настроить udev-правила (см. секцию "Права доступа")
+
+## Пример конфигурации
+
+Создайте `/etc/default/lcd_monitor`:
+```bash
+LCD_THEME=orange
+LCD_FPS=10
+LCD_NET_IF1=eth0
+LCD_NET_IF2=eth1
+LCD_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+```
+
 ---
 Автор: **OldManOne**

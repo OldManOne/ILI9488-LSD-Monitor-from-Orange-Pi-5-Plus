@@ -1,6 +1,7 @@
 [Unit]
 Description=LCD System Monitor for ILI9488
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple

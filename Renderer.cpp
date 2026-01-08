@@ -125,6 +125,13 @@ Renderer::~Renderer() {
 }
 
 void Renderer::loadFont(const std::string& font_path, float /*size*/) {
+    // Освободить предыдущий шрифт если был
+    if (font_info_) {
+        delete static_cast<stbtt_fontinfo*>(font_info_);
+        font_info_ = nullptr;
+    }
+    font_buffer_.clear();
+
     std::ifstream file(font_path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         std::cerr << "Failed to open font file: " << font_path << std::endl;

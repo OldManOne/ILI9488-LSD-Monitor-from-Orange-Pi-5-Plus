@@ -19,8 +19,6 @@ double IdleModeController::get_transition_progress() const {
 
 void IdleModeController::update(const SystemMetrics& metrics, double dt) {
     std::lock_guard<std::mutex> lock(mutex_);
-    // This is a stand-in for the actual metric access.
-    // We will need to implement public members or getters in SystemMetrics later.
     bool system_is_idle = (metrics.cpu_usage < 10.0 &&
                            metrics.temp < 50.0 &&
                            metrics.net1_mbps < 10.0 &&
@@ -48,4 +46,8 @@ void IdleModeController::update(const SystemMetrics& metrics, double dt) {
     const double tau = 0.3;
     double alpha = 1.0 - std::exp(-dt / tau);
     transition_progress += (target_progress - transition_progress) * alpha;
+
+    // Clamp to [0, 1] for safety
+    if (transition_progress < 0.0) transition_progress = 0.0;
+    if (transition_progress > 1.0) transition_progress = 1.0;
 }
