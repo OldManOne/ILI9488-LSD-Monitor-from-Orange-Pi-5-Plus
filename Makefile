@@ -1,12 +1,12 @@
 CXX = g++
 DEPFLAGS = -MMD -MP
 CXXFLAGS = -std=c++17 -Wall -O2 -pthread $(DEPFLAGS)
-LDFLAGS = -lgpiodcxx -pthread
+LDFLAGS = -lgpiodcxx -pthread -lcurl
 
 TARGET = lcd_monitor
 PREFIX ?= /usr/local
 SYSTEMD_DIR ?= /etc/systemd/system
-SRCS = main.cpp ILI9488.cpp SystemMetrics.cpp Renderer.cpp AnimationEngine.cpp IdleModeController.cpp stb_truetype_impl.cpp
+SRCS = main.cpp ILI9488.cpp SystemMetrics.cpp Renderer.cpp AnimationEngine.cpp IdleModeController.cpp stb_truetype_impl.cpp PrinterClient.cpp stb_image_impl.cpp
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
 

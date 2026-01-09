@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <deque>
 
+struct PrinterMetrics;
+
 enum class MetricType {
     CPU,
     TEMP,
@@ -23,6 +25,7 @@ public:
     ~Renderer();
 
     void Render(const SystemMetrics& metrics,
+                const PrinterMetrics& printer,
                 AnimationEngine& animator,
                 const IdleModeController& idle_controller,
                 double time_sec,
@@ -95,6 +98,13 @@ private:
                          double cpu, double temp, double mem,
                          double net1, const std::string& wan_status,
                          color_t cpu_color, color_t temp_color, color_t mem_color, color_t net_color);
+    void drawPrintScreen(const PrinterMetrics& printer,
+                         AnimationEngine& animator,
+                         double time_sec);
+    void drawImageRGBAFit(int x, int y, int w, int h,
+                          const PrinterMetrics& printer);
+    std::string trimTextToWidth(const std::string& s, float size, int max_w);
+    std::string formatDurationShort(int seconds) const;
     void drawServicesPanel(int x, int y, int w, int h,
                            const SystemMetrics& metrics);
     void drawHeader(int x, int y, int w, int h, const SystemMetrics& metrics);
@@ -140,6 +150,12 @@ private:
     double net2_scale_max_ = 0.0;
     mutable std::vector<double> scratch_values_;
     float idle_t_ = 0.0f;
+
+    // Screen mode switching
+    enum class ScreenMode { MAIN, PRINT };
+    ScreenMode screen_mode_ = ScreenMode::MAIN;
+    double last_screen_switch_ts_ = 0.0;
+    bool last_print_eligible_ = false;
 };
 
 #endif // RENDERER_H

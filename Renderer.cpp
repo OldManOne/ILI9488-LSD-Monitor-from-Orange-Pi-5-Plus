@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "ILI9488.h"
 #include "Theme.h"
+#include "PrinterClient.h"
 #include "utils.h"
 #include <fstream>
 #include <iostream>
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <cctype>
 #include <unistd.h>
 
 #include "stb_truetype.h"
@@ -63,6 +65,19 @@ static color_t interpolate_color(color_t c1, color_t c2, float t) {
     uint8_t b = b1 + static_cast<int>((b2 - b1) * t);
 
     return (r << 11) | (g << 5) | b;
+}
+
+static inline void rgb565_to_rgb888(color_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
+    r = static_cast<uint8_t>(((c >> 11) & 0x1F) * 255 / 31);
+    g = static_cast<uint8_t>(((c >> 5) & 0x3F) * 255 / 63);
+    b = static_cast<uint8_t>((c & 0x1F) * 255 / 31);
+}
+
+static inline color_t rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    uint16_t rr = (r * 31 / 255) & 0x1F;
+    uint16_t gg = (g * 63 / 255) & 0x3F;
+    uint16_t bb = (b * 31 / 255) & 0x1F;
+    return static_cast<color_t>((rr << 11) | (gg << 5) | bb);
 }
 
 static double clamp(double v, double lo, double hi) {
@@ -257,6 +272,7 @@ double Renderer::computeNetScale(const std::deque<double>& history, double& smoo
 }
 
 void Renderer::Render(const SystemMetrics& metrics,
+                      const PrinterMetrics& printer,
                       AnimationEngine& animator,
                       const IdleModeController& idle_controller,
                       double time_sec,
@@ -309,6 +325,35 @@ void Renderer::Render(const SystemMetrics& metrics,
     color_t series_net2 = dimColor(RGB(255, 170, 60));   // orange
     color_t series_cpu  = dimColor(RGB(80, 220, 140));   // green
     color_t series_temp = dimColor(RGB(255, 140, 80));   // warm orange
+
+    // Determine Print Screen eligibility and toggle 10s/10s
+    double now = time_sec;
+    bool print_active = (printer.state == "printing" || printer.state == "paused");
+    bool print_eligible = false;
+    if (print_active) {
+        print_eligible = true;
+    } else if (printer.had_job && (now - printer.last_active_ts) < 60.0) {
+        print_eligible = true;
+    }
+
+    if (!print_eligible) {
+        screen_mode_ = ScreenMode::MAIN;
+        last_screen_switch_ts_ = now;
+    } else {
+        if (!last_print_eligible_) {
+            screen_mode_ = ScreenMode::MAIN;
+            last_screen_switch_ts_ = now;
+        } else if ((now - last_screen_switch_ts_) >= 10.0) {
+            screen_mode_ = (screen_mode_ == ScreenMode::MAIN) ? ScreenMode::PRINT : ScreenMode::MAIN;
+            last_screen_switch_ts_ = now;
+        }
+    }
+    last_print_eligible_ = print_eligible;
+
+    if (print_eligible && screen_mode_ == ScreenMode::PRINT) {
+        drawPrintScreen(printer, animator, time_sec);
+        return;
+    }
 
     drawHeader(0, 0, DISPLAY_WIDTH, header_h, metrics);
 
@@ -1031,6 +1076,145 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
     drawGauge(0, cpu, 100.0, cpu_color, "CPU", std::to_string(static_cast<int>(cpu)) + "%");
     drawGauge(1, mid_val, use_ram ? 100.0 : 2500.0, mid_color, mid_label, mid_text);
     drawGauge(2, temp, 100.0, temp_color, "TEMP", std::to_string(static_cast<int>(temp)) + "C");
+}
+
+void Renderer::drawPrintScreen(const PrinterMetrics& printer,
+                               AnimationEngine& animator,
+                               double time_sec) {
+    (void)animator;
+    (void)time_sec;
+    int left_x = 10, left_y = 10, left_w = 310, left_h = 300;
+    int right_x = 330, right_y = 10, right_w = 140, right_h = 300;
+
+    drawPanelFrame(left_x, left_y, left_w, left_h, "Preview", "");
+    drawPanelFrame(right_x, right_y, right_w, right_h, "Print", "");
+
+    int img_pad = 12;
+    int img_x = left_x + img_pad;
+    int img_y = left_y + 36;
+    int img_w = left_w - img_pad * 2;
+    int img_h = left_h - (img_y - left_y) - img_pad;
+    drawImageRGBAFit(img_x, img_y, img_w, img_h, printer);
+
+    int pct = static_cast<int>(std::round(printer.progress01 * 100.0f));
+    pct = std::max(0, std::min(100, pct));
+    std::string pct_text = std::to_string(pct) + "%";
+    float pct_size = 28.0f;
+    int pct_w = measureTextWidth(pct_text, pct_size);
+    drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 10,
+             dimColor(current_theme_.text_value), pct_size);
+
+    std::string state = printer.state;
+    for (char& c : state) {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    if (state.empty()) state = "IDLE";
+
+    color_t status_color = current_theme_.state_low;
+    if (printer.state == "paused") status_color = current_theme_.state_medium;
+    if (printer.state == "error") status_color = current_theme_.state_high;
+    if (printer.state == "complete" || printer.state == "standby") status_color = current_theme_.state_low;
+    status_color = dimColor(status_color);
+    color_t track = scale_color(status_color, 0.20f);
+
+    int gauge_top = right_y + 52;
+    int gauge_h = 120;
+    int cx = right_x + right_w / 2;
+    int cy = gauge_top + gauge_h - 10;
+    int ring_r = std::min(right_w / 2 - 8, gauge_h - 20);
+    ring_r = std::max(24, ring_r);
+    int thickness = std::max(10, std::min(12, ring_r / 3));
+    drawSemiGauge(cx, cy, ring_r, thickness, clamp(printer.progress01, 0.0f, 1.0f),
+                  status_color, track);
+
+    float detail_fs = 11.0f;
+    int detail_y = gauge_top + gauge_h + 6;
+    drawText(state, right_x + 10, detail_y, status_color, detail_fs);
+    detail_y += 14;
+
+    std::string eta = (printer.eta_sec > 0) ? ("ETA " + formatDurationShort(printer.eta_sec)) : "ETA --";
+    std::string el = "E " + formatDurationShort(printer.elapsed_sec);
+    drawText(eta, right_x + 10, detail_y, dimColor(current_theme_.text_status), detail_fs);
+    int el_w = measureTextWidth(el, detail_fs);
+    drawText(el, right_x + right_w - el_w - 10, detail_y, dimColor(current_theme_.text_status), detail_fs);
+    detail_y += 14;
+
+    std::string fname = printer.filename.empty() ? "-" : printer.filename;
+    fname = trimTextToWidth(fname, detail_fs, right_w - 20);
+    drawText(fname, right_x + 10, detail_y, dimColor(current_theme_.text_value), detail_fs);
+}
+
+void Renderer::drawImageRGBAFit(int x, int y, int w, int h,
+                                const PrinterMetrics& printer) {
+    if (!target_buffer_) return;
+    auto img = printer.thumb_rgba;
+    color_t bg = scale_color(current_theme_.spark_bg, 0.85f);
+    drawRect(x, y, w, h, bg);
+    if (!img || img->data.empty() || img->w <= 0 || img->h <= 0) {
+        drawText("NO PREVIEW", x + 8, y + h / 2 - 6, dimColor(current_theme_.text_status), 12.0f);
+        return;
+    }
+    int iw = img->w;
+    int ih = img->h;
+    double scale = std::min(static_cast<double>(w) / iw, static_cast<double>(h) / ih);
+    int dw = std::max(1, static_cast<int>(std::round(iw * scale)));
+    int dh = std::max(1, static_cast<int>(std::round(ih * scale)));
+    int dx = x + (w - dw) / 2;
+    int dy = y + (h - dh) / 2;
+
+    for (int yy = 0; yy < dh; ++yy) {
+        int sy = (yy * ih) / dh;
+        for (int xx = 0; xx < dw; ++xx) {
+            int sx = (xx * iw) / dw;
+            int src_idx = (sy * iw + sx) * 4;
+            uint8_t sr = img->data[src_idx + 0];
+            uint8_t sg = img->data[src_idx + 1];
+            uint8_t sb = img->data[src_idx + 2];
+            uint8_t sa = img->data[src_idx + 3];
+            if (sa == 0) continue;
+            int px = dx + xx;
+            int py = dy + yy;
+            if (px < 0 || py < 0 || px >= DISPLAY_WIDTH || py >= DISPLAY_HEIGHT) continue;
+            size_t di = static_cast<size_t>(py) * DISPLAY_WIDTH + px;
+            if (sa == 255) {
+                (*target_buffer_)[di] = rgb888_to_rgb565(sr, sg, sb);
+            } else {
+                uint8_t dr, dg, db;
+                rgb565_to_rgb888((*target_buffer_)[di], dr, dg, db);
+                uint8_t rr = static_cast<uint8_t>((sr * sa + dr * (255 - sa)) / 255);
+                uint8_t rg = static_cast<uint8_t>((sg * sa + dg * (255 - sa)) / 255);
+                uint8_t rb = static_cast<uint8_t>((sb * sa + db * (255 - sa)) / 255);
+                (*target_buffer_)[di] = rgb888_to_rgb565(rr, rg, rb);
+            }
+        }
+    }
+}
+
+std::string Renderer::trimTextToWidth(const std::string& s, float size, int max_w) {
+    if (max_w <= 0) return "";
+    if (measureTextWidth(s, size) <= max_w) return s;
+    const std::string ell = "...";
+    if (measureTextWidth(ell, size) >= max_w) return ell;
+    std::string out = s;
+    while (!out.empty() && measureTextWidth(out + ell, size) > max_w) {
+        out.pop_back();
+    }
+    return out + ell;
+}
+
+std::string Renderer::formatDurationShort(int seconds) const {
+    if (seconds < 0) return "--";
+    int s = seconds;
+    int h = s / 3600;
+    int m = (s % 3600) / 60;
+    int sec = s % 60;
+    if (h > 0) {
+        return std::to_string(h) + "h " + std::to_string(m) + "m";
+    }
+    if (m > 0) {
+        return std::to_string(m) + "m " + std::to_string(sec) + "s";
+    }
+    return std::to_string(sec) + "s";
 }
 
 void Renderer::drawServicesPanel(int x, int y, int w, int h,

@@ -1,6 +1,7 @@
 #include "ILI9488.h"
 #include "SystemMetrics.h"
 #include "Renderer.h"
+#include "PrinterClient.h"
 #include "AnimationEngine.h"
 #include "IdleModeController.h"
 #include "utils.h"
@@ -149,6 +150,9 @@ int main() {
 
     SystemMetrics metrics;
     metrics.Start(); // Start the async worker threads
+    std::string printer_url = getenv_string("LCD_PRINTER_URL", "http://192.168.1.103:7125");
+    PrinterClient printer(printer_url);
+    printer.Start();
 
     Renderer renderer;
     AnimationEngine animator;
@@ -197,7 +201,8 @@ int main() {
 
         auto render_start = std::chrono::steady_clock::now();
         double time_sec = std::chrono::duration_cast<std::chrono::duration<double>>(frame_start.time_since_epoch()).count();
-        renderer.Render(metrics, animator, idle_controller, time_sec, *cur);
+        PrinterMetrics printer_snapshot = printer.GetSnapshot();
+        renderer.Render(metrics, printer_snapshot, animator, idle_controller, time_sec, *cur);
         auto render_end = std::chrono::steady_clock::now();
         render_time_acc += std::chrono::duration_cast<std::chrono::duration<double>>(render_end - render_start).count();
         render_frames++;
@@ -299,5 +304,6 @@ int main() {
 
     display.SetBacklight(false);
     metrics.Stop();
+    printer.Stop();
     return 0;
 }
