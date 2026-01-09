@@ -212,8 +212,9 @@ void Renderer::UpdateTickerText(const SystemMetrics& metrics) {
 color_t Renderer::pickStateColor(double value, const std::string& key) const {
     auto it = THRESHOLDS.find(key);
     if (it == THRESHOLDS.end()) return current_theme_.state_low;
+    color_t vivid_low = RGB(0, 255, 80);
     const auto& t = it->second;
-    if (value < t[0]) return current_theme_.state_low;
+    if (value < t[0]) return vivid_low;
     if (value < t[1]) return current_theme_.state_medium;
     return current_theme_.state_high;
 }
@@ -324,7 +325,7 @@ void Renderer::Render(const SystemMetrics& metrics,
     // Fixed palette for series (do not depend on state)
     color_t series_net1 = dimColor(RGB(70, 180, 255));   // cyan/blue
     color_t series_net2 = dimColor(RGB(255, 170, 60));   // orange
-    color_t series_cpu  = dimColor(RGB(80, 220, 140));   // green
+    color_t series_cpu  = dimColor(RGB(0, 255, 80));     // vivid green
     color_t series_temp = dimColor(RGB(255, 140, 80));   // warm orange
 
     // Determine Print Screen eligibility and toggle 10s/10s
