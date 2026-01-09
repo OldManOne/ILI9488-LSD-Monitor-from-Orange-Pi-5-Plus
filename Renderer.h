@@ -77,6 +77,8 @@ private:
     void drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color);
     void drawSmoothRingGauge(int cx, int cy, int r, int thickness, double frac,
                              color_t active, color_t inactive);
+    void drawSemiGauge(int cx, int cy, int r, int thickness, double frac,
+                       color_t active, color_t track);
     void drawGraphPanel(int x, int y, int w, int h,
                         const std::string& title,
                         const std::string& values,

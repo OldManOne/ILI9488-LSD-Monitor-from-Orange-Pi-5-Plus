@@ -904,6 +904,32 @@ void Renderer::drawSmoothRingGauge(int cx, int cy, int r, int thickness, double 
     }
 }
 
+void Renderer::drawSemiGauge(int cx, int cy, int r, int thickness, double frac,
+                             color_t active, color_t track) {
+    constexpr double kPi = 3.141592653589793;
+    double f = clamp(frac, 0.0, 1.0);
+    double start = kPi;   // left
+    double end = 0.0;     // right
+    double sweep = start - end; // PI
+    double prog_end = start - sweep * f;
+
+    // Track (full top semicircle)
+    drawThickArc(cx, cy, r, thickness, start, end, track);
+
+    // Active arc
+    if (f > 0.0) {
+        drawThickArc(cx, cy, r, thickness, start, prog_end, active);
+        int cap_r = std::max(2, thickness / 2);
+        int cap_rad = r - thickness / 2;
+        int x0 = cx + static_cast<int>(std::cos(start) * cap_rad);
+        int y0 = cy + static_cast<int>(std::sin(start) * cap_rad);
+        int x1 = cx + static_cast<int>(std::cos(prog_end) * cap_rad);
+        int y1 = cy + static_cast<int>(std::sin(prog_end) * cap_rad);
+        drawFilledCircle(x0, y0, cap_r, active);
+        drawFilledCircle(x1, y1, cap_r, active);
+    }
+}
+
 void Renderer::drawGraphPanel(int x, int y, int w, int h,
                               const std::string& title,
                               const std::string& values,
@@ -975,19 +1001,22 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
     std::string mid_text = use_ram ? (std::to_string(static_cast<int>(mem)) + "%") : formatNet(net1);
 
     auto drawGauge = [&](int idx, double value, double max, color_t color, const std::string& label, const std::string& val) {
+        int block_y = inner_y + idx * block_h;
         int cx = x + w / 2;
-        int cy = inner_y + idx * block_h + block_h / 2 - 4;
-        int ring_r = clamp_i(std::min(inner_w / 2 - 2, block_h / 2 - 10), 20, 30);
-        int thickness = clamp_i(ring_r / 3, 8, 12);
+        int cy = block_y + block_h - 10;
+        int ring_r = clamp_i(std::min(inner_w / 2 - 6, block_h - 18), 20, 30);
+        int thickness = clamp_i(ring_r / 3, 10, 12);
 
         color_t active = dimColor(color);
-        color_t inactive = scale_color(active, 0.20f);
-        drawSmoothRingGauge(cx, cy, ring_r, thickness, clamp(value / max, 0.0, 1.0), active, inactive);
+        color_t track = scale_color(active, 0.20f);
+        drawSemiGauge(cx, cy, ring_r, thickness, clamp(value / max, 0.0, 1.0), active, track);
 
         int vw = measureTextWidth(val, 14.0f);
-        drawText(val, cx - vw / 2, cy - 7, dimColor(current_theme_.text_value), 14.0f);
+        int val_y = cy - static_cast<int>(ring_r * 0.45);
+        drawText(val, cx - vw / 2, val_y, dimColor(current_theme_.text_value), 14.0f);
         int lw = measureTextWidth(label, 11.0f);
-        drawText(label, cx - lw / 2, cy + ring_r + 6, dimColor(current_theme_.text_status), 11.0f);
+        int label_y = block_y + block_h - 2;
+        drawText(label, cx - lw / 2, label_y, dimColor(current_theme_.text_status), 11.0f);
     };
 
     drawGauge(0, cpu, 100.0, cpu_color, "CPU", std::to_string(static_cast<int>(cpu)) + "%");
