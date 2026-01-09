@@ -1119,10 +1119,11 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
     }
     if (state.empty()) state = "IDLE";
 
-    color_t status_color = current_theme_.state_low;
+    color_t vivid_ok = RGB(0, 255, 80);
+    color_t status_color = vivid_ok;
     if (printer.state == "paused") status_color = current_theme_.state_medium;
     if (printer.state == "error") status_color = current_theme_.state_high;
-    if (printer.state == "complete" || printer.state == "standby") status_color = current_theme_.state_low;
+    if (printer.state == "complete" || printer.state == "standby") status_color = vivid_ok;
     status_color = dimColor(status_color);
     color_t track = scale_color(status_color, 0.20f);
 
