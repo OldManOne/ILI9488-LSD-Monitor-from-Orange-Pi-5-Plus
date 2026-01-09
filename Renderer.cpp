@@ -959,7 +959,6 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
                                color_t cpu_color, color_t temp_color, color_t mem_color, color_t net_color) {
     (void)wan_status;
     drawPanelFrame(x, y, w, h, "Vitals", "");
-    int inner_x = x + 8;
     int inner_y = y + 34;
     int inner_w = w - 16;
     int inner_h = h - (inner_y - y) - 8;
