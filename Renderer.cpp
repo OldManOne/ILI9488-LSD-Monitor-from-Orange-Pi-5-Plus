@@ -1089,6 +1089,9 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
 
     drawPanelFrame(left_x, left_y, left_w, left_h, "Preview", "");
     drawPanelFrame(right_x, right_y, right_w, right_h, "Print", "");
+    // Remove divider line under the header for the Print panel
+    color_t panel_bg = scale_color(current_theme_.bar_bg, 0.80f);
+    drawRect(right_x + 10, right_y + 32, right_w - 21, 1, panel_bg);
 
     int img_pad = 12;
     int img_x = left_x + img_pad;
@@ -1103,13 +1106,10 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
     pct_ss.setf(std::ios::fixed);
     pct_ss << std::setprecision(3) << pct;
     std::string pct_text = pct_ss.str();
-    for (char& c : pct_text) {
-        if (c == '.') c = ','; // decimal comma for RU locale
-    }
     pct_text += "%";
     float pct_size = 28.0f;
     int pct_w = measureTextWidth(pct_text, pct_size);
-    drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 10,
+    drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 16,
              dimColor(current_theme_.text_value), pct_size);
 
     std::string state = printer.state;
