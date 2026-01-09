@@ -39,7 +39,7 @@ namespace SparklineZoom {
 
 namespace Layout {
     constexpr int HEADER_HEIGHT = 42;
-    constexpr int FOOTER_HEIGHT = 44;
+    constexpr int FOOTER_HEIGHT = 0;
     constexpr int MARGIN = 12;
     constexpr int GAP = 10;
     constexpr int LEFT_PANEL_WIDTH = 310;
@@ -297,12 +297,7 @@ void Renderer::Render(const SystemMetrics& metrics,
     int r1_x = g1_x + g1_w + gap;
     int r1_y = content_y0;
     int r1_w = right_w;
-    int r1_h = Layout::VITALS_PANEL_HEIGHT;
-
-    int r2_x = r1_x;
-    int r2_y = r1_y + r1_h + gap;
-    int r2_w = right_w;
-    int r2_h = content_y1 - r2_y;
+    int r1_h = content_y1 - content_y0;
 
     double cpu = animator.get("cpu", metrics.cpu_usage);
     double temp = animator.get("temp", metrics.temp);
@@ -346,9 +341,7 @@ void Renderer::Render(const SystemMetrics& metrics,
     drawVitalsPanel(r1_x, r1_y, r1_w, r1_h, cpu, temp, mem, net1, wan_status,
                     pickStateColor(cpu, "cpu"), pickStateColor(temp, "temp"), mem_color,
                     pickStateColor(net1, "net"));
-    drawServicesPanel(r2_x, r2_y, r2_w, r2_h, metrics);
-
-    drawFooter(0, DISPLAY_HEIGHT - footer_h, DISPLAY_WIDTH, footer_h, metrics, idle_controller);
+    // No Services panel and no Footer ticker in simplified layout
 }
 
 void Renderer::drawText(const std::string& text, int x, int y, color_t color, float size) {
@@ -853,6 +846,64 @@ void Renderer::drawRingGauge(int cx, int cy, int r, int thickness, double frac,
     }
 }
 
+void Renderer::drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color) {
+    double span = std::abs(a1 - a0);
+    int steps = std::max(24, static_cast<int>(span * r * 1.2));
+    steps = std::min(180, steps);
+    double step = (a1 - a0) / static_cast<double>(steps);
+    int prev_x = cx + static_cast<int>(std::cos(a0) * r);
+    int prev_y = cy + static_cast<int>(std::sin(a0) * r);
+    for (int i = 1; i <= steps; ++i) {
+        double a = a0 + step * i;
+        int x = cx + static_cast<int>(std::cos(a) * r);
+        int y = cy + static_cast<int>(std::sin(a) * r);
+        drawLine(prev_x, prev_y, x, y, color);
+        prev_x = x;
+        prev_y = y;
+    }
+}
+
+void Renderer::drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color) {
+    int t = std::max(1, thickness);
+    for (int i = 0; i < t; ++i) {
+        int rr = r - i;
+        if (rr <= 0) break;
+        drawArcPolyline(cx, cy, rr, a0, a1, color);
+    }
+}
+
+void Renderer::drawSmoothRingGauge(int cx, int cy, int r, int thickness, double frac,
+                                   color_t active, color_t inactive) {
+    constexpr double kPi = 3.141592653589793;
+    double f = clamp(frac, 0.0, 1.0);
+    double start = -kPi / 2.0;
+    double end = start + (2.0 * kPi * f);
+
+    // Track (inactive full circle)
+    drawThickArc(cx, cy, r, thickness, start, start + 2.0 * kPi, inactive);
+
+    // Active arc
+    if (f > 0.0) {
+        drawThickArc(cx, cy, r, thickness, start, end, active);
+
+        int cap_r = std::max(2, thickness / 2);
+        int cap_rad = r - thickness / 2;
+        int x0 = cx + static_cast<int>(std::cos(start) * cap_rad);
+        int y0 = cy + static_cast<int>(std::sin(start) * cap_rad);
+        int x1 = cx + static_cast<int>(std::cos(end) * cap_rad);
+        int y1 = cy + static_cast<int>(std::sin(end) * cap_rad);
+        drawFilledCircle(x0, y0, cap_r, active);
+        drawFilledCircle(x1, y1, cap_r, active);
+    }
+
+    // Inner fill to make donut smoother
+    color_t inner = scale_color(current_theme_.bar_bg, 0.70f);
+    int inner_r = r - thickness - 1;
+    if (inner_r > 0) {
+        drawFilledCircle(cx, cy, inner_r, inner);
+    }
+}
+
 void Renderer::drawGraphPanel(int x, int y, int w, int h,
                               const std::string& title,
                               const std::string& values,
@@ -906,13 +957,17 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
                                double cpu, double temp, double mem,
                                double net1, const std::string& wan_status,
                                color_t cpu_color, color_t temp_color, color_t mem_color, color_t net_color) {
+    (void)wan_status;
     drawPanelFrame(x, y, w, h, "Vitals", "");
     int inner_x = x + 8;
-    int inner_y = y + 38;
+    int inner_y = y + 34;
     int inner_w = w - 16;
-    int col_w = inner_w / 3;
-    int ring_r = 32;
-    int ring_y = inner_y + ring_r;
+    int inner_h = h - (inner_y - y) - 8;
+    int block_h = inner_h / 3;
+
+    auto clamp_i = [](int v, int lo, int hi) {
+        return std::min(hi, std::max(lo, v));
+    };
 
     bool use_ram = mem > 0.0;
     double mid_val = use_ram ? mem : net1;
@@ -921,35 +976,24 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
     std::string mid_text = use_ram ? (std::to_string(static_cast<int>(mem)) + "%") : formatNet(net1);
 
     auto drawGauge = [&](int idx, double value, double max, color_t color, const std::string& label, const std::string& val) {
-        int cx = inner_x + idx * col_w + col_w / 2;
+        int cx = x + w / 2;
+        int cy = inner_y + idx * block_h + block_h / 2 - 4;
+        int ring_r = clamp_i(std::min(inner_w / 2 - 2, block_h / 2 - 10), 20, 30);
+        int thickness = clamp_i(ring_r / 3, 8, 12);
+
         color_t active = dimColor(color);
-        color_t inactive = scale_color(active, 0.2f);
-        drawRingGauge(cx, ring_y, ring_r, 10, clamp(value / max, 0.0, 1.0), active, inactive, 24);
-        int vw = measureTextWidth(val, 13.0f);
-        drawText(val, cx - vw / 2, ring_y - 7, dimColor(current_theme_.text_value), 13.0f);
+        color_t inactive = scale_color(active, 0.20f);
+        drawSmoothRingGauge(cx, cy, ring_r, thickness, clamp(value / max, 0.0, 1.0), active, inactive);
+
+        int vw = measureTextWidth(val, 14.0f);
+        drawText(val, cx - vw / 2, cy - 7, dimColor(current_theme_.text_value), 14.0f);
         int lw = measureTextWidth(label, 11.0f);
-        drawText(label, cx - lw / 2, ring_y + ring_r + 4, dimColor(current_theme_.text_status), 11.0f);
+        drawText(label, cx - lw / 2, cy + ring_r + 6, dimColor(current_theme_.text_status), 11.0f);
     };
 
     drawGauge(0, cpu, 100.0, cpu_color, "CPU", std::to_string(static_cast<int>(cpu)) + "%");
     drawGauge(1, mid_val, use_ram ? 100.0 : 2500.0, mid_color, mid_label, mid_text);
     drawGauge(2, temp, 100.0, temp_color, "TEMP", std::to_string(static_cast<int>(temp)) + "C");
-
-    // Chips
-    int chips_y = ring_y + ring_r + 20;
-    int chip_h = 18;
-    int chip_gap = 6;
-    int chip_w = (inner_w - 2 * chip_gap) / 3;
-    auto chip = [&](int i, const std::string& text, color_t col) {
-        int cx = inner_x + i * (chip_w + chip_gap);
-        drawRoundedRect(cx, chips_y, chip_w, chip_h, 4, scale_color(current_theme_.bar_bg, 0.9f), current_theme_.bar_border);
-        int tw = measureTextWidth(text, 11.0f);
-        drawText(text, cx + (chip_w - tw) / 2, chips_y + 4, col, 11.0f);
-    };
-    bool wan_ok = (wan_status == "OK");
-    chip(0, wan_ok ? "NET: UP" : "NET: -", wan_ok ? current_theme_.state_low : dimColor(current_theme_.text_status));
-    chip(1, "SMART: -", dimColor(current_theme_.text_status));
-    chip(2, "ZFS: -", dimColor(current_theme_.text_status));
 }
 
 void Renderer::drawServicesPanel(int x, int y, int w, int h,

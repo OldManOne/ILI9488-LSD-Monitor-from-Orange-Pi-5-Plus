@@ -73,6 +73,10 @@ private:
                         color_t shadow_color, int width);
     void drawRingGauge(int cx, int cy, int r, int thickness, double frac,
                        color_t active, color_t inactive, int segments);
+    void drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color);
+    void drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color);
+    void drawSmoothRingGauge(int cx, int cy, int r, int thickness, double frac,
+                             color_t active, color_t inactive);
     void drawGraphPanel(int x, int y, int w, int h,
                         const std::string& title,
                         const std::string& values,
