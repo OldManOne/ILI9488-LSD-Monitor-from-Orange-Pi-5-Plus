@@ -154,3 +154,17 @@ LCD_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
 
 ---
 Автор: **OldManOne**
+
+## Changelog (кратко)
+### 2026‑01
+- Добавлен Print Screen для Moonraker (превью модели + прогресс/ETA)
+- Логика карусели 10с/10с и “хвост” 60с после завершения печати
+- Частичная перерисовка (dirty‑rect) для повышения FPS
+
+## Скриншоты
+Добавьте скриншоты в репозиторий (например, в папку `docs/`) и вставьте сюда:
+
+```
+![Dashboard](docs/dashboard.jpg)
+![Print Screen](docs/print_screen.jpg)
+```
