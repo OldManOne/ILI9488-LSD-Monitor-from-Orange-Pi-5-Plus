@@ -1009,9 +1009,10 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
     std::string mid_text = use_ram ? (std::to_string(static_cast<int>(mem)) + "%") : formatNet(net1);
 
     auto drawGauge = [&](int idx, double value, double max, color_t color, const std::string& label, const std::string& val) {
+        const int lift = 10; // move gauges up
         int block_y = inner_y + idx * block_h;
         int cx = x + w / 2;
-        int cy = block_y + block_h - 10;
+        int cy = block_y + block_h - 10 - lift;
         int ring_r = clamp_i(std::min(inner_w / 2 - 6, block_h - 18), 20, 30);
         int thickness = clamp_i(ring_r / 3, 10, 12);
 
@@ -1023,7 +1024,7 @@ void Renderer::drawVitalsPanel(int x, int y, int w, int h,
         int val_y = cy - static_cast<int>(ring_r * 0.45);
         drawText(val, cx - vw / 2, val_y, dimColor(current_theme_.text_value), 14.0f);
         int lw = measureTextWidth(label, 11.0f);
-        int label_y = block_y + block_h - 2;
+        int label_y = block_y + block_h - 2 - lift;
         drawText(label, cx - lw / 2, label_y, dimColor(current_theme_.text_status), 11.0f);
     };
 
