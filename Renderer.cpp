@@ -1109,7 +1109,7 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
     pct_text += "%";
     float pct_size = 28.0f;
     int pct_w = measureTextWidth(pct_text, pct_size);
-    drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 21,
+    drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 36,
              dimColor(current_theme_.text_value), pct_size);
 
     std::string state = printer.state;
