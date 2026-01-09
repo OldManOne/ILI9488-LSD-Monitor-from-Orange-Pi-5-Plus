@@ -847,16 +847,20 @@ void Renderer::drawRingGauge(int cx, int cy, int r, int thickness, double frac,
 }
 
 void Renderer::drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color) {
+    drawArcPolyline(cx, cy, r, a0, a1, color, false);
+}
+
+void Renderer::drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color, bool invert_y) {
     double span = std::abs(a1 - a0);
     int steps = std::max(24, static_cast<int>(span * r * 1.2));
     steps = std::min(180, steps);
     double step = (a1 - a0) / static_cast<double>(steps);
     int prev_x = cx + static_cast<int>(std::cos(a0) * r);
-    int prev_y = cy + static_cast<int>(std::sin(a0) * r);
+    int prev_y = cy + static_cast<int>((invert_y ? -std::sin(a0) : std::sin(a0)) * r);
     for (int i = 1; i <= steps; ++i) {
         double a = a0 + step * i;
         int x = cx + static_cast<int>(std::cos(a) * r);
-        int y = cy + static_cast<int>(std::sin(a) * r);
+        int y = cy + static_cast<int>((invert_y ? -std::sin(a) : std::sin(a)) * r);
         drawLine(prev_x, prev_y, x, y, color);
         prev_x = x;
         prev_y = y;
@@ -864,11 +868,15 @@ void Renderer::drawArcPolyline(int cx, int cy, int r, double a0, double a1, colo
 }
 
 void Renderer::drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color) {
+    drawThickArc(cx, cy, r, thickness, a0, a1, color, false);
+}
+
+void Renderer::drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color, bool invert_y) {
     int t = std::max(1, thickness);
     for (int i = 0; i < t; ++i) {
         int rr = r - i;
         if (rr <= 0) break;
-        drawArcPolyline(cx, cy, rr, a0, a1, color);
+        drawArcPolyline(cx, cy, rr, a0, a1, color, invert_y);
     }
 }
 
@@ -914,17 +922,17 @@ void Renderer::drawSemiGauge(int cx, int cy, int r, int thickness, double frac,
     double prog_end = start - sweep * f;
 
     // Track (full top semicircle)
-    drawThickArc(cx, cy, r, thickness, start, end, track);
+    drawThickArc(cx, cy, r, thickness, start, end, track, true);
 
     // Active arc
     if (f > 0.0) {
-        drawThickArc(cx, cy, r, thickness, start, prog_end, active);
+        drawThickArc(cx, cy, r, thickness, start, prog_end, active, true);
         int cap_r = std::max(2, thickness / 2);
         int cap_rad = r - thickness / 2;
         int x0 = cx + static_cast<int>(std::cos(start) * cap_rad);
-        int y0 = cy + static_cast<int>(std::sin(start) * cap_rad);
+        int y0 = cy + static_cast<int>(-std::sin(start) * cap_rad);
         int x1 = cx + static_cast<int>(std::cos(prog_end) * cap_rad);
-        int y1 = cy + static_cast<int>(std::sin(prog_end) * cap_rad);
+        int y1 = cy + static_cast<int>(-std::sin(prog_end) * cap_rad);
         drawFilledCircle(x0, y0, cap_r, active);
         drawFilledCircle(x1, y1, cap_r, active);
     }

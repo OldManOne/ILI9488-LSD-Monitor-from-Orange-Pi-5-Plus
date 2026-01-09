@@ -74,7 +74,9 @@ private:
     void drawRingGauge(int cx, int cy, int r, int thickness, double frac,
                        color_t active, color_t inactive, int segments);
     void drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color);
+    void drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color, bool invert_y);
     void drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color);
+    void drawThickArc(int cx, int cy, int r, int thickness, double a0, double a1, color_t color, bool invert_y);
     void drawSmoothRingGauge(int cx, int cy, int r, int thickness, double frac,
                              color_t active, color_t inactive);
     void drawSemiGauge(int cx, int cy, int r, int thickness, double frac,
