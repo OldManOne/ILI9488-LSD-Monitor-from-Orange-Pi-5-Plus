@@ -323,8 +323,8 @@ void Renderer::Render(const SystemMetrics& metrics,
     double net2 = animator.get("net2", metrics.net2_mbps);
 
     // Fixed palette for series (do not depend on state)
-    color_t series_net1 = dimColor(RGB(70, 180, 255));   // cyan/blue
-    color_t series_net2 = dimColor(RGB(255, 170, 60));   // orange
+    color_t series_net1 = dimColor(RGB(0, 210, 255));    // vivid cyan/blue
+    color_t series_net2 = dimColor(RGB(255, 220, 0));    // vivid yellow
     color_t series_cpu  = dimColor(RGB(0, 255, 80));     // vivid green
     color_t series_temp = dimColor(RGB(255, 140, 80));   // warm orange
 
@@ -1120,8 +1120,9 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
     if (state.empty()) state = "IDLE";
 
     color_t vivid_ok = RGB(0, 255, 80);
+    color_t vivid_warn = RGB(255, 230, 0);
     color_t status_color = vivid_ok;
-    if (printer.state == "paused") status_color = current_theme_.state_medium;
+    if (printer.state == "paused") status_color = vivid_warn;
     if (printer.state == "error") status_color = current_theme_.state_high;
     if (printer.state == "complete" || printer.state == "standby") status_color = vivid_ok;
     status_color = dimColor(status_color);
@@ -1308,7 +1309,7 @@ void Renderer::drawHeader(int x, int y, int w, int h, const SystemMetrics& metri
     color_t neutral_val = dimColor(current_theme_.text_value);
     // Brighter status colors for header values
     color_t ok_col = RGB(0, 255, 120);
-    color_t warn_col = RGB(255, 200, 0);
+    color_t warn_col = RGB(255, 230, 0);
     color_t bad_col = RGB(255, 60, 60);
 
     auto wan_color = [&]() -> color_t {
