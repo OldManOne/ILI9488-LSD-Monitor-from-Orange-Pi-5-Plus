@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <cctype>
+#include <iomanip>
 #include <unistd.h>
 
 #include "stb_truetype.h"
@@ -1096,9 +1097,16 @@ void Renderer::drawPrintScreen(const PrinterMetrics& printer,
     int img_h = left_h - (img_y - left_y) - img_pad;
     drawImageRGBAFit(img_x, img_y, img_w, img_h, printer);
 
-    int pct = static_cast<int>(std::round(printer.progress01 * 100.0f));
-    pct = std::max(0, std::min(100, pct));
-    std::string pct_text = std::to_string(pct) + "%";
+    double pct = printer.progress01 * 100.0f;
+    pct = std::max(0.0, std::min(100.0, pct));
+    std::ostringstream pct_ss;
+    pct_ss.setf(std::ios::fixed);
+    pct_ss << std::setprecision(3) << pct;
+    std::string pct_text = pct_ss.str();
+    for (char& c : pct_text) {
+        if (c == '.') c = ','; // decimal comma for RU locale
+    }
+    pct_text += "%";
     float pct_size = 28.0f;
     int pct_w = measureTextWidth(pct_text, pct_size);
     drawText(pct_text, right_x + (right_w - pct_w) / 2, right_y + 10,
