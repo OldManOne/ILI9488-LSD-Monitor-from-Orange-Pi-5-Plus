@@ -328,7 +328,7 @@ void Renderer::Render(const SystemMetrics& metrics,
     color_t series_cpu  = dimColor(RGB(0, 255, 80));     // vivid green
     color_t series_temp = dimColor(RGB(255, 140, 80));   // warm orange
 
-    // Determine Print Screen eligibility and toggle 10s/10s
+    // Determine Print Screen eligibility and toggle MAIN/PRINT with asymmetric durations
     double now = time_sec;
     bool print_active = (printer.state == "printing" || printer.state == "paused");
     bool print_eligible = false;
@@ -342,12 +342,19 @@ void Renderer::Render(const SystemMetrics& metrics,
         screen_mode_ = ScreenMode::MAIN;
         last_screen_switch_ts_ = now;
     } else {
+        const double main_duration  = 180.0; // 3 минуты основной экран
+        const double print_duration = 30.0;  // 30 секунд Print Screen
+
         if (!last_print_eligible_) {
             screen_mode_ = ScreenMode::MAIN;
             last_screen_switch_ts_ = now;
-        } else if ((now - last_screen_switch_ts_) >= 10.0) {
-            screen_mode_ = (screen_mode_ == ScreenMode::MAIN) ? ScreenMode::PRINT : ScreenMode::MAIN;
-            last_screen_switch_ts_ = now;
+        } else {
+            double elapsed = now - last_screen_switch_ts_;
+            double current_limit = (screen_mode_ == ScreenMode::MAIN) ? main_duration : print_duration;
+            if (elapsed >= current_limit) {
+                screen_mode_ = (screen_mode_ == ScreenMode::MAIN) ? ScreenMode::PRINT : ScreenMode::MAIN;
+                last_screen_switch_ts_ = now;
+            }
         }
     }
     last_print_eligible_ = print_eligible;
