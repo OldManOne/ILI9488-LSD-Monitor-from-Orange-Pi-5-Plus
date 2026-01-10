@@ -41,10 +41,10 @@ namespace SparklineZoom {
 }
 
 // --- Fill parameters ---
-constexpr double FILL_INTENSITY_SERIES = 0.55;   // additive fill start (series line)
-constexpr double FILL_DECAY_SERIES     = 1.2;    // decay speed series (slower -> виднее)
-constexpr double FILL_ALPHA_SPARK      = 0.75;   // base alpha for sparkline
-constexpr double FILL_DECAY_SPARK      = 1.4;    // decay speed sparkline (slower)
+constexpr double FILL_INTENSITY_SERIES = 1.00;   // additive fill start (series line)
+constexpr double FILL_DECAY_SERIES     = 0.9;    // decay speed series (slower -> виднее)
+constexpr double FILL_ALPHA_SPARK      = 1.00;   // base alpha for sparkline
+constexpr double FILL_DECAY_SPARK      = 0.9;    // decay speed sparkline (slower)
 
 namespace Layout {
     constexpr int HEADER_HEIGHT = 42;
