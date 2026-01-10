@@ -40,6 +40,12 @@ namespace SparklineZoom {
     constexpr double MIN_RANGE_NET = 1.0;
 }
 
+// --- Fill parameters ---
+constexpr double FILL_INTENSITY_SERIES = 0.30;   // additive fill start (series line)
+constexpr double FILL_DECAY_SERIES     = 2.0;    // decay speed series
+constexpr double FILL_ALPHA_SPARK      = 0.40;   // base alpha for sparkline
+constexpr double FILL_DECAY_SPARK      = 2.5;    // decay speed sparkline
+
 namespace Layout {
     constexpr int HEADER_HEIGHT = 42;
     constexpr int FOOTER_HEIGHT = 0;
@@ -695,6 +701,43 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
         points.emplace_back(px, py);
     }
 
+    // Gradient fill (alpha blend with background)
+    if (target_buffer_) {
+        uint8_t fr, fg, fb;
+        uint8_t br, bg, bb;
+        rgb565_to_rgb888(color, fr, fg, fb);
+        rgb565_to_rgb888(bg_color, br, bg, bb);
+        int bottom_y = y + h - 1;
+        for (size_t i = 0; i + 1 < points.size(); ++i) {
+            auto [x0, y0] = points[i];
+            auto [x1, y1] = points[i + 1];
+            if (x0 > x1) {
+                std::swap(x0, x1);
+                std::swap(y0, y1);
+            }
+            int dx = std::max(1, x1 - x0);
+            for (int xi = x0; xi <= x1; ++xi) {
+                double tseg = static_cast<double>(xi - x0) / dx;
+                double top_f = y0 + (y1 - y0) * tseg;
+                int top = static_cast<int>(std::round(top_f));
+                if (top < y) top = y;
+                if (top > bottom_y) top = bottom_y;
+                double denom = std::max(1.0, static_cast<double>(bottom_y - top));
+                for (int py = top; py <= bottom_y; ++py) {
+                    double norm = (py - top_f) / denom;
+                    double alpha = FILL_ALPHA_SPARK * std::exp(-FILL_DECAY_SPARK * norm);
+                    if (alpha < 0.001) continue;
+                    if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
+                    size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
+                    uint8_t r = static_cast<uint8_t>(fr * alpha + br * (1.0 - alpha));
+                    uint8_t g = static_cast<uint8_t>(fg * alpha + bg * (1.0 - alpha));
+                    uint8_t b = static_cast<uint8_t>(fb * alpha + bb * (1.0 - alpha));
+                    (*target_buffer_)[idx] = rgb888_to_rgb565(r, g, b);
+                }
+            }
+        }
+    }
+
     // Draw lines
     int lw = std::max(1, line_width);
     for (size_t i = 1; i < points.size(); ++i) {
@@ -849,30 +892,74 @@ void Renderer::drawPanelFrame(int x, int y, int w, int h, const std::string& tit
 void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int w, int h,
                               double min_val, double max_val, color_t color,
                               color_t shadow_color, int width) {
-    if (data.size() < 2) return;
+    if (data.size() < 2 || !target_buffer_) return;
     const int inner_w = std::max(1, w - 2);
     const int inner_h = std::max(1, h - 2);
     double range = std::max(1e-6, max_val - min_val);
-    int prev_x = 0;
-    int prev_y = 0;
-    bool has_prev = false;
     size_t n = data.size();
+
+    std::vector<std::pair<int, int>> points;
+    points.reserve(n);
     for (size_t i = 0; i < n; ++i) {
         double v = clamp((data[i] - min_val) / range, 0.0, 1.0);
         int px = x + 1 + static_cast<int>((static_cast<double>(i) / (n - 1)) * inner_w);
         int py = y + h - 1 - static_cast<int>(v * inner_h);
-        if (has_prev) {
-            if (shadow_color != color) {
-                drawLine(prev_x, prev_y + 1, px, py + 1, shadow_color);
+        points.emplace_back(px, py);
+    }
+
+    // Gradient fill with additive blending
+    uint8_t fr, fg, fb;
+    rgb565_to_rgb888(color, fr, fg, fb);
+    int bottom_y = y + h - 1;
+    for (size_t i = 0; i + 1 < points.size(); ++i) {
+        auto [x0, y0] = points[i];
+        auto [x1, y1] = points[i + 1];
+        if (x0 > x1) {
+            std::swap(x0, x1);
+            std::swap(y0, y1);
+        }
+        int dx = std::max(1, x1 - x0);
+        for (int xi = x0; xi <= x1; ++xi) {
+            double tseg = static_cast<double>(xi - x0) / dx;
+            double top_f = y0 + (y1 - y0) * tseg;
+            int top = static_cast<int>(std::round(top_f));
+            if (top < y) top = y;
+            if (top > bottom_y) top = bottom_y;
+            double denom = std::max(1.0, static_cast<double>(bottom_y - top));
+            for (int py = top; py <= bottom_y; ++py) {
+                if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
+                double norm = (py - top_f) / denom;
+                double intensity = FILL_INTENSITY_SERIES * std::exp(-FILL_DECAY_SERIES * norm);
+                if (intensity < 0.001) continue;
+                size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
+                color_t dst = (*target_buffer_)[idx];
+                uint8_t dr, dg, db;
+                rgb565_to_rgb888(dst, dr, dg, db);
+                int nr = std::min(255, static_cast<int>(dr) + static_cast<int>(fr * intensity));
+                int ng = std::min(255, static_cast<int>(dg) + static_cast<int>(fg * intensity));
+                int nb = std::min(255, static_cast<int>(db) + static_cast<int>(fb * intensity));
+                (*target_buffer_)[idx] = rgb888_to_rgb565(static_cast<uint8_t>(nr),
+                                                          static_cast<uint8_t>(ng),
+                                                          static_cast<uint8_t>(nb));
             }
-            drawLine(prev_x, prev_y, px, py, color);
-            if (width > 1) {
-                drawLine(prev_x, prev_y + 1, px, py + 1, color);
-            }
+        }
+    }
+
+    // Draw lines on top
+    int prev_x = points.front().first;
+    int prev_y = points.front().second;
+    for (size_t i = 1; i < points.size(); ++i) {
+        int px = points[i].first;
+        int py = points[i].second;
+        if (shadow_color != color) {
+            drawLine(prev_x, prev_y + 1, px, py + 1, shadow_color);
+        }
+        drawLine(prev_x, prev_y, px, py, color);
+        if (width > 1) {
+            drawLine(prev_x, prev_y + 1, px, py + 1, color);
         }
         prev_x = px;
         prev_y = py;
-        has_prev = true;
     }
     drawFilledCircle(prev_x, prev_y, 2, color);
 }
