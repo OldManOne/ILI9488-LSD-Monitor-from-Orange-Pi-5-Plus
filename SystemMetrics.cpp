@@ -13,6 +13,7 @@
 #include <regex>
 #include <algorithm>
 #include <cstring>
+#include <unordered_set>
 #include <sys/statvfs.h>
 #include <cstdlib>
 #include <sys/wait.h>
@@ -336,6 +337,21 @@ int SystemMetrics::updateDiskUsage() {
 
 int SystemMetrics::updateWireGuardPeers() {
     try {
+        // Получаем актуальный список разрешённых peer'ов из wg-easy.db
+        // чтобы отображение на дисплее совпадало с UI wg-easy.
+        std::unordered_set<std::string> enabled_pubkeys;
+        {
+            std::string db_out;
+            const char* cmd = R"(sqlite3 /etc/wireguard/wg-easy.db "select public_key from clients_table where enabled=1;")";
+            if (exec_with_timeout(cmd, 5, db_out) && !db_out.empty()) {
+                std::stringstream dss(db_out);
+                std::string pk;
+                while (std::getline(dss, pk)) {
+                    if (!pk.empty()) enabled_pubkeys.insert(pk);
+                }
+            }
+        }
+
         std::string output;
         if (!exec_with_timeout("wg show wg0 latest-handshakes 2>/dev/null", 5, output)) {
             return -1;
@@ -355,6 +371,9 @@ int SystemMetrics::updateWireGuardPeers() {
             long long ts = 0;
             ls >> pubkey >> ts;
             if (ts <= 0) continue;
+            if (!enabled_pubkeys.empty() && enabled_pubkeys.find(pubkey) == enabled_pubkeys.end()) {
+                continue; // пропускаем peer'ов, которых нет в базе wg-easy или выключены
+            }
             if ((now_s - ts) <= wg_active_window_s_) {
                 count++;
             }
