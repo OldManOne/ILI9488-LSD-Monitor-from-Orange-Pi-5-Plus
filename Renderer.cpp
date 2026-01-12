@@ -876,16 +876,25 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
         }
     }
 
-    // Draw lines
+    // Draw lines (interpolate per-x for smoother look between sparse samples)
     int lw = std::max(1, line_width);
     for (size_t i = 1; i < points.size(); ++i) {
         int x0 = points[i - 1].first;
         int y0 = points[i - 1].second;
         int x1 = points[i].first;
         int y1 = points[i].second;
-        drawLine(x0, y0, x1, y1, color);
-        if (lw > 1) {
-            drawLine(x0, y0 + 1, x1, y1 + 1, color);
+        if (x0 > x1) {
+            std::swap(x0, x1);
+            std::swap(y0, y1);
+        }
+        int dx = std::max(1, x1 - x0);
+        for (int xi = x0; xi <= x1; ++xi) {
+            double tseg = static_cast<double>(xi - x0) / dx;
+            int yi = static_cast<int>(std::round(y0 + (y1 - y0) * tseg));
+            drawLine(xi, yi, xi, yi, color);
+            if (lw > 1) {
+                drawLine(xi, yi + 1, xi, yi + 1, color);
+            }
         }
     }
 

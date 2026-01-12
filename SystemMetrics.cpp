@@ -533,7 +533,7 @@ std::pair<int, int> SystemMetrics::updateMinecraftPlayers() {
 
 void SystemMetrics::metrics_worker_func() {
     using namespace std::chrono_literals;
-    const int interval_ms = 500;
+    const int interval_ms = 100; // faster sampling for smoother sparklines
     while (running_) {
         MetricsSnapshot snap;
 
