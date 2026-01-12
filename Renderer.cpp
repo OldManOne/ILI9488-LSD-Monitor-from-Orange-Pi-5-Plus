@@ -47,6 +47,34 @@ constexpr double FILL_DECAY_SERIES     = 1.4;    // decay speed series
 constexpr double FILL_ALPHA_SPARK      = 0.70;   // base alpha for sparkline
 constexpr double FILL_DECAY_SPARK      = 1.5;    // decay speed sparkline
 
+// --- Exponential decay lookup table for gradient fills ---
+// Pre-computed exp() values to avoid expensive calculations in hot loops
+constexpr int EXP_LUT_SIZE = 512;
+constexpr double EXP_LUT_MAX = 8.0;  // Max decay value we'll encounter
+static float exp_lut[EXP_LUT_SIZE];
+static bool exp_lut_initialized = false;
+
+// Fast exp lookup with linear interpolation
+inline float fast_exp(double x) {
+    if (x <= 0.0) return 1.0f;
+    if (x >= EXP_LUT_MAX) return 0.0f;
+    double idx_f = (x / EXP_LUT_MAX) * (EXP_LUT_SIZE - 1);
+    int idx = static_cast<int>(idx_f);
+    if (idx >= EXP_LUT_SIZE - 1) return exp_lut[EXP_LUT_SIZE - 1];
+    float t = static_cast<float>(idx_f - idx);
+    return exp_lut[idx] * (1.0f - t) + exp_lut[idx + 1] * t;
+}
+
+// Initialize lookup table
+inline void init_exp_lut() {
+    if (exp_lut_initialized) return;
+    for (int i = 0; i < EXP_LUT_SIZE; ++i) {
+        double x = (static_cast<double>(i) / (EXP_LUT_SIZE - 1)) * EXP_LUT_MAX;
+        exp_lut[i] = static_cast<float>(std::exp(-x));
+    }
+    exp_lut_initialized = true;
+}
+
 namespace Layout {
     constexpr int HEADER_HEIGHT = 42;
     constexpr int FOOTER_HEIGHT = 0;
@@ -107,6 +135,9 @@ static color_t scale_color(color_t c, float factor) {
 // --- Renderer Implementation ---
 
 Renderer::Renderer() {
+    // Initialize exponential decay lookup table for gradient fills
+    init_exp_lut();
+
     idle_t_ = 0.0f;
     net1_scale_max_ = 0.0;
     net2_scale_max_ = 0.0;
@@ -495,8 +526,30 @@ void Renderer::drawCircle(int cx, int cy, int r, color_t color) {
 void Renderer::drawFilledCircle(int cx, int cy, int r, color_t color) {
     if (!target_buffer_) return;
     if (r <= 0) return;
+
+    int r2 = r * r;
     for (int y = -r; y <= r; ++y) {
-        int dx = static_cast<int>(std::sqrt(std::max(0, r * r - y * y)));
+        int y2 = y * y;
+        int dx;
+
+        // For small radii (most common case), use integer arithmetic instead of sqrt
+        // This avoids expensive floating-point sqrt call in hot loop
+        if (r <= 10) {
+            int max_dx2 = r2 - y2;
+            if (max_dx2 < 0) {
+                dx = 0;
+            } else {
+                // Find largest dx where dx^2 <= max_dx2 using integer operations
+                dx = 0;
+                while ((dx + 1) * (dx + 1) <= max_dx2) {
+                    ++dx;
+                }
+            }
+        } else {
+            // For larger radii, sqrt is still efficient enough
+            dx = static_cast<int>(std::sqrt(std::max(0, r2 - y2)));
+        }
+
         int x0 = cx - dx;
         int x1 = cx + dx;
         int py = cy + y;
@@ -726,7 +779,7 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
                 double denom = std::max(1.0, static_cast<double>(bottom_y - top));
                 for (int py = top; py <= bottom_y; ++py) {
                     double norm = (py - top_f) / denom;
-                    double alpha = FILL_ALPHA_SPARK * std::exp(-FILL_DECAY_SPARK * norm);
+                    double alpha = FILL_ALPHA_SPARK * fast_exp(FILL_DECAY_SPARK * norm);
                     if (alpha < 0.001) continue;
                     if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
                     size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
@@ -930,7 +983,7 @@ void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int 
             for (int py = top; py <= bottom_y; ++py) {
                 if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
                 double norm = (py - top_f) / denom;
-                double intensity = FILL_INTENSITY_SERIES * std::exp(-FILL_DECAY_SERIES * norm);
+                double intensity = FILL_INTENSITY_SERIES * fast_exp(FILL_DECAY_SERIES * norm);
                 if (intensity < 0.001) continue;
                 size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
                 color_t dst = (*target_buffer_)[idx];

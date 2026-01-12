@@ -235,33 +235,47 @@ double SystemMetrics::getCPUTemp() {
 
 void SystemMetrics::getNetworkSpeed(const std::string& interface_name, double& speed) {
     uint64_t current_bytes = 0;
-    std::string cmd = "ethtool -S " + interface_name;
-    std::string output;
-    if (exec_with_timeout(cmd.c_str(), 5, output)) {
-        std::stringstream ss(output);
-        std::string line;
-        uint64_t rx_octets = 0, tx_octets = 0;
-        while (std::getline(ss, line)) {
-            if (line.find("rx_octets:") != std::string::npos) {
-                sscanf(line.c_str(), "     rx_octets: %lu", &rx_octets);
-            }
-            if (line.find("tx_octets:") != std::string::npos) {
-                sscanf(line.c_str(), "     tx_octets: %lu", &tx_octets);
-            }
-        }
-        current_bytes = rx_octets + tx_octets;
-    } else {
-        try {
-            std::ifstream rx_file("/sys/class/net/" + interface_name + "/statistics/rx_bytes");
-            std::ifstream tx_file("/sys/class/net/" + interface_name + "/statistics/tx_bytes");
+    bool success = false;
+
+    // Try fast path first: read from /sys/class/net (instant, no shell exec)
+    try {
+        std::ifstream rx_file("/sys/class/net/" + interface_name + "/statistics/rx_bytes");
+        std::ifstream tx_file("/sys/class/net/" + interface_name + "/statistics/tx_bytes");
+        if (rx_file.is_open() && tx_file.is_open()) {
             uint64_t rx, tx;
             rx_file >> rx;
             tx_file >> tx;
             current_bytes = rx + tx;
-        } catch (...) {
-            speed = 0.0;
-            return;
+            success = true;
         }
+    } catch (...) {
+        success = false;
+    }
+
+    // Fallback to ethtool only if sysfs failed (rare case)
+    if (!success) {
+        std::string cmd = "ethtool -S " + interface_name;
+        std::string output;
+        if (exec_with_timeout(cmd.c_str(), 5, output)) {
+            std::stringstream ss(output);
+            std::string line;
+            uint64_t rx_octets = 0, tx_octets = 0;
+            while (std::getline(ss, line)) {
+                if (line.find("rx_octets:") != std::string::npos) {
+                    sscanf(line.c_str(), "     rx_octets: %lu", &rx_octets);
+                }
+                if (line.find("tx_octets:") != std::string::npos) {
+                    sscanf(line.c_str(), "     tx_octets: %lu", &tx_octets);
+                }
+            }
+            current_bytes = rx_octets + tx_octets;
+            success = true;
+        }
+    }
+
+    if (!success) {
+        speed = 0.0;
+        return;
     }
 
     auto now = std::chrono::steady_clock::now();
