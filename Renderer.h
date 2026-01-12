@@ -151,6 +151,14 @@ private:
     mutable std::vector<double> scratch_values_;
     float idle_t_ = 0.0f;
 
+    // Sparkline smoothing (EMA filter for network data)
+    bool sparkline_smooth_ = true;
+    double sparkline_smooth_alpha_ = 0.35;  // EMA smoothing factor (0.0 = max smooth, 1.0 = no smooth)
+    double net1_smooth_ = 0.0;
+    double net2_smooth_ = 0.0;
+    bool net1_initialized_ = false;
+    bool net2_initialized_ = false;
+
     // Screen mode switching
     enum class ScreenMode { MAIN, PRINT };
     ScreenMode screen_mode_ = ScreenMode::MAIN;
