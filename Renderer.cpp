@@ -220,6 +220,14 @@ Renderer::Renderer() {
     net_autoscale_min_ = getenv_double("LCD_NET_AUTOSCALE_MIN", net_autoscale_min_);
     net_autoscale_max_ = getenv_double("LCD_NET_AUTOSCALE_MAX", net_autoscale_max_);
     net_autoscale_ema_ = getenv_double("LCD_NET_AUTOSCALE_EMA", net_autoscale_ema_);
+
+    // Sparkline smoothing settings
+    sparkline_smooth_ = getenv_bool("LCD_SPARKLINE_SMOOTH", sparkline_smooth_);
+    sparkline_smooth_alpha_ = getenv_double("LCD_SPARKLINE_SMOOTH_ALPHA", sparkline_smooth_alpha_);
+    net1_smooth_ = 0.0;
+    net2_smooth_ = 0.0;
+    net1_initialized_ = false;
+    net2_initialized_ = false;
 }
 
 Renderer::~Renderer() {
@@ -276,8 +284,34 @@ void Renderer::UpdateHistories(const SystemMetrics& metrics) {
     };
     push(history_cpu_, metrics.cpu_usage);
     push(history_temp_, metrics.temp);
-    push(history_net1_, metrics.net1_mbps);
-    push(history_net2_, metrics.net2_mbps);
+
+    // Apply EMA smoothing to network data for smoother sparklines
+    double net1_value = metrics.net1_mbps;
+    double net2_value = metrics.net2_mbps;
+
+    if (sparkline_smooth_) {
+        // Initialize on first run
+        if (!net1_initialized_) {
+            net1_smooth_ = net1_value;
+            net1_initialized_ = true;
+        } else {
+            // EMA formula: smoothed = alpha * raw + (1 - alpha) * prev_smoothed
+            net1_smooth_ = sparkline_smooth_alpha_ * net1_value + (1.0 - sparkline_smooth_alpha_) * net1_smooth_;
+        }
+
+        if (!net2_initialized_) {
+            net2_smooth_ = net2_value;
+            net2_initialized_ = true;
+        } else {
+            net2_smooth_ = sparkline_smooth_alpha_ * net2_value + (1.0 - sparkline_smooth_alpha_) * net2_smooth_;
+        }
+
+        net1_value = net1_smooth_;
+        net2_value = net2_smooth_;
+    }
+
+    push(history_net1_, net1_value);
+    push(history_net2_, net2_value);
 }
 
 void Renderer::UpdateTickerText(const SystemMetrics& metrics) {
