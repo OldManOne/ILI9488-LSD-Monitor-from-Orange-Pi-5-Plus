@@ -75,6 +75,54 @@ inline void init_exp_lut() {
     exp_lut_initialized = true;
 }
 
+// --- Trigonometric lookup table for arc drawing ---
+// Pre-computed sin/cos values to avoid expensive trig calls in arc rendering
+constexpr int TRIG_LUT_SIZE = 1024;  // 1024 entries for 360 degrees (0.35° precision)
+static float sin_lut[TRIG_LUT_SIZE];
+static float cos_lut[TRIG_LUT_SIZE];
+static bool trig_lut_initialized = false;
+
+// Fast sin lookup with linear interpolation
+inline float fast_sin(double angle) {
+    constexpr double kTwoPi = 6.283185307179586;
+    // Normalize angle to [0, 2π)
+    double normalized = angle - std::floor(angle / kTwoPi) * kTwoPi;
+    if (normalized < 0.0) normalized += kTwoPi;
+
+    double idx_f = (normalized / kTwoPi) * (TRIG_LUT_SIZE - 1);
+    int idx = static_cast<int>(idx_f);
+    if (idx >= TRIG_LUT_SIZE - 1) return sin_lut[0];  // Wrap around
+
+    float t = static_cast<float>(idx_f - idx);
+    return sin_lut[idx] * (1.0f - t) + sin_lut[idx + 1] * t;
+}
+
+// Fast cos lookup with linear interpolation
+inline float fast_cos(double angle) {
+    constexpr double kTwoPi = 6.283185307179586;
+    double normalized = angle - std::floor(angle / kTwoPi) * kTwoPi;
+    if (normalized < 0.0) normalized += kTwoPi;
+
+    double idx_f = (normalized / kTwoPi) * (TRIG_LUT_SIZE - 1);
+    int idx = static_cast<int>(idx_f);
+    if (idx >= TRIG_LUT_SIZE - 1) return cos_lut[0];
+
+    float t = static_cast<float>(idx_f - idx);
+    return cos_lut[idx] * (1.0f - t) + cos_lut[idx + 1] * t;
+}
+
+// Initialize trig lookup tables
+inline void init_trig_lut() {
+    if (trig_lut_initialized) return;
+    constexpr double kTwoPi = 6.283185307179586;
+    for (int i = 0; i < TRIG_LUT_SIZE; ++i) {
+        double angle = (static_cast<double>(i) / (TRIG_LUT_SIZE - 1)) * kTwoPi;
+        sin_lut[i] = static_cast<float>(std::sin(angle));
+        cos_lut[i] = static_cast<float>(std::cos(angle));
+    }
+    trig_lut_initialized = true;
+}
+
 namespace Layout {
     constexpr int HEADER_HEIGHT = 42;
     constexpr int FOOTER_HEIGHT = 0;
@@ -137,6 +185,8 @@ static color_t scale_color(color_t c, float factor) {
 Renderer::Renderer() {
     // Initialize exponential decay lookup table for gradient fills
     init_exp_lut();
+    // Initialize trigonometric lookup tables for arc drawing
+    init_trig_lut();
 
     idle_t_ = 0.0f;
     net1_scale_max_ = 0.0;
@@ -1027,15 +1077,15 @@ void Renderer::drawRingGauge(int cx, int cy, int r, int thickness, double frac,
     int inner = std::max(1, r - thickness);
     for (int i = 0; i < segs; ++i) {
         double a = (2.0 * kPi * i / segs) - kPi / 2.0;
-        int x0 = cx + static_cast<int>(std::cos(a) * inner);
-        int y0 = cy + static_cast<int>(std::sin(a) * inner);
-        int x1 = cx + static_cast<int>(std::cos(a) * r);
-        int y1 = cy + static_cast<int>(std::sin(a) * r);
+        int x0 = cx + static_cast<int>(fast_cos(a) * inner);
+        int y0 = cy + static_cast<int>(fast_sin(a) * inner);
+        int x1 = cx + static_cast<int>(fast_cos(a) * r);
+        int y1 = cy + static_cast<int>(fast_sin(a) * r);
         color_t col = (i < lit) ? active : inactive;
         drawLine(x0, y0, x1, y1, col);
         if (thickness > 6) {
-            int x2 = cx + static_cast<int>(std::cos(a) * (inner + 2));
-            int y2 = cy + static_cast<int>(std::sin(a) * (inner + 2));
+            int x2 = cx + static_cast<int>(fast_cos(a) * (inner + 2));
+            int y2 = cy + static_cast<int>(fast_sin(a) * (inner + 2));
             drawLine(x2, y2, x1, y1, col);
         }
     }
@@ -1050,12 +1100,12 @@ void Renderer::drawArcPolyline(int cx, int cy, int r, double a0, double a1, colo
     int steps = std::max(24, static_cast<int>(span * r * 1.2));
     steps = std::min(180, steps);
     double step = (a1 - a0) / static_cast<double>(steps);
-    int prev_x = cx + static_cast<int>(std::cos(a0) * r);
-    int prev_y = cy + static_cast<int>((invert_y ? -std::sin(a0) : std::sin(a0)) * r);
+    int prev_x = cx + static_cast<int>(fast_cos(a0) * r);
+    int prev_y = cy + static_cast<int>((invert_y ? -fast_sin(a0) : fast_sin(a0)) * r);
     for (int i = 1; i <= steps; ++i) {
         double a = a0 + step * i;
-        int x = cx + static_cast<int>(std::cos(a) * r);
-        int y = cy + static_cast<int>((invert_y ? -std::sin(a) : std::sin(a)) * r);
+        int x = cx + static_cast<int>(fast_cos(a) * r);
+        int y = cy + static_cast<int>((invert_y ? -fast_sin(a) : fast_sin(a)) * r);
         drawLine(prev_x, prev_y, x, y, color);
         prev_x = x;
         prev_y = y;
@@ -1091,10 +1141,10 @@ void Renderer::drawSmoothRingGauge(int cx, int cy, int r, int thickness, double 
 
         int cap_r = std::max(2, thickness / 2);
         int cap_rad = r - thickness / 2;
-        int x0 = cx + static_cast<int>(std::cos(start) * cap_rad);
-        int y0 = cy + static_cast<int>(std::sin(start) * cap_rad);
-        int x1 = cx + static_cast<int>(std::cos(end) * cap_rad);
-        int y1 = cy + static_cast<int>(std::sin(end) * cap_rad);
+        int x0 = cx + static_cast<int>(fast_cos(start) * cap_rad);
+        int y0 = cy + static_cast<int>(fast_sin(start) * cap_rad);
+        int x1 = cx + static_cast<int>(fast_cos(end) * cap_rad);
+        int y1 = cy + static_cast<int>(fast_sin(end) * cap_rad);
         drawFilledCircle(x0, y0, cap_r, active);
         drawFilledCircle(x1, y1, cap_r, active);
     }
@@ -1124,10 +1174,10 @@ void Renderer::drawSemiGauge(int cx, int cy, int r, int thickness, double frac,
         drawThickArc(cx, cy, r, thickness, start, prog_end, active, true);
         int cap_r = std::max(2, thickness / 2);
         int cap_rad = r - thickness / 2;
-        int x0 = cx + static_cast<int>(std::cos(start) * cap_rad);
-        int y0 = cy + static_cast<int>(-std::sin(start) * cap_rad);
-        int x1 = cx + static_cast<int>(std::cos(prog_end) * cap_rad);
-        int y1 = cy + static_cast<int>(-std::sin(prog_end) * cap_rad);
+        int x0 = cx + static_cast<int>(fast_cos(start) * cap_rad);
+        int y0 = cy + static_cast<int>(-fast_sin(start) * cap_rad);
+        int x1 = cx + static_cast<int>(fast_cos(prog_end) * cap_rad);
+        int y1 = cy + static_cast<int>(-fast_sin(prog_end) * cap_rad);
         drawFilledCircle(x0, y0, cap_r, active);
         drawFilledCircle(x1, y1, cap_r, active);
     }

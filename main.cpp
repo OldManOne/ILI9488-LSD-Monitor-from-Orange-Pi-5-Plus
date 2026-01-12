@@ -43,14 +43,48 @@ static void compute_dirty_tiles(const uint16_t* cur,
             int x0 = tx * tile;
             int x1 = std::min(x0 + tile, width);
             bool diff = false;
+
+            // Optimized tile comparison: check row-by-row with early exit
             for (int y = y0; y < y1 && !diff; ++y) {
                 const uint16_t* a = cur + y * width + x0;
                 const uint16_t* b = prev + y * width + x0;
-                size_t bytes = static_cast<size_t>(x1 - x0) * sizeof(uint16_t);
-                if (std::memcmp(a, b, bytes) != 0) {
-                    diff = true;
+                int pixels = x1 - x0;
+
+                // Fast path: compare as uint64_t chunks for better performance
+                if (pixels >= 4 && (reinterpret_cast<uintptr_t>(a) % 8 == 0) &&
+                    (reinterpret_cast<uintptr_t>(b) % 8 == 0)) {
+                    const uint64_t* a64 = reinterpret_cast<const uint64_t*>(a);
+                    const uint64_t* b64 = reinterpret_cast<const uint64_t*>(b);
+                    int chunks = pixels / 4;
+                    int remainder = pixels % 4;
+
+                    for (int i = 0; i < chunks; ++i) {
+                        if (a64[i] != b64[i]) {
+                            diff = true;
+                            break;
+                        }
+                    }
+
+                    // Check remaining pixels
+                    if (!diff && remainder > 0) {
+                        for (int i = chunks * 4; i < pixels; ++i) {
+                            if (a[i] != b[i]) {
+                                diff = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback to pixel-by-pixel comparison (still faster than memcmp for small tiles)
+                    for (int i = 0; i < pixels; ++i) {
+                        if (a[i] != b[i]) {
+                            diff = true;
+                            break;
+                        }
+                    }
                 }
             }
+
             if (diff) {
                 dirty[ty * tiles_x + tx] = 1;
                 ++dirty_tiles;
