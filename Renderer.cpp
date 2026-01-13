@@ -796,7 +796,10 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
     double data_min = *std::min_element(data.begin(), data.end());
     double data_max = *std::max_element(data.begin(), data.end());
     double data_range = data_max - data_min;
-    bool is_flat = (data_range < min_range);
+    // Use relative threshold: flat if range < 3% of scale (adaptive to current traffic level)
+    double scale_range = max_val - min_val;
+    double relative_threshold = 0.03 * scale_range;
+    bool is_flat = (data_range < std::max(relative_threshold, min_range * 0.2));
 
     // Calculate zoom factor using blended reference (avoids sudden zoom-out on spikes)
     double ref = 0.7 * max_val + 0.3 * data.back();
