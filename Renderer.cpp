@@ -1595,8 +1595,9 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
                               AnimationEngine& animator, double time_sec) {
     drawPanelFrame(x, y, w, h, title, subtitle);
     if (!values.empty()) {
-        int vw = measureTextWidth(values, 11.0f);
-        drawText(values, x + w - vw - 12, y + 6, dimColor(current_theme_.text_status), 11.0f);
+        float value_fs = (title == "Network Throughput") ? 16.5f : 11.0f;
+        int vw = measureTextWidth(values, value_fs);
+        drawText(values, x + w - vw - 12, y + 6, dimColor(current_theme_.text_status), value_fs);
     }
     int legend_y = y + 36;
     int lx = x + 12;
