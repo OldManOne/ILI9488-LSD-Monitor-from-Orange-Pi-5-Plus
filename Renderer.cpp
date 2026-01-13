@@ -512,7 +512,8 @@ void Renderer::Render(const SystemMetrics& metrics,
                    "last 120s | auto-scale",
                    "NET1 Mbps", "NET2 Mbps",
                    history_net1_, history_net2_, 0.0, net_hist_max,
-                   series_net1, series_net2);
+                   series_net1, series_net2,
+                   MetricType::NET1, MetricType::NET2, animator, time_sec);
 
     std::string cpu_values = "CPU " + std::to_string(static_cast<int>(cpu)) + "%  TEMP " +
                              std::to_string(static_cast<int>(temp)) + "C";
@@ -521,7 +522,8 @@ void Renderer::Render(const SystemMetrics& metrics,
                    "last 120s | 0-100",
                    "CPU %", "TEMP C",
                    history_cpu_, history_temp_, 0.0, 100.0,
-                   series_cpu, series_temp);
+                   series_cpu, series_temp,
+                   MetricType::CPU, MetricType::TEMP, animator, time_sec);
 
     double mem = metrics.mem_percent;
     color_t mem_color = pickStateColor(mem, "ram");
@@ -1242,26 +1244,69 @@ void Renderer::drawPanelFrame(int x, int y, int w, int h, const std::string& tit
 
 void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int w, int h,
                               double min_val, double max_val, color_t color,
-                              color_t shadow_color, int width) {
+                              color_t shadow_color, int width, MetricType metric_type,
+                              AnimationEngine& animator, double time_sec) {
     if (data.size() < 2 || !target_buffer_) return;
     const int inner_w = std::max(1, w - 2);
     const int inner_h = std::max(1, h - 2);
     double range = std::max(1e-6, max_val - min_val);
     size_t n = data.size();
 
+    // Get animation key based on metric type
+    std::string pulse_key = "series_pulse";
+    switch (metric_type) {
+        case MetricType::CPU: pulse_key = "series_cpu_pulse"; break;
+        case MetricType::TEMP: pulse_key = "series_temp_pulse"; break;
+        case MetricType::NET1: pulse_key = "series_net1_pulse"; break;
+        case MetricType::NET2: pulse_key = "series_net2_pulse"; break;
+        default: break;
+    }
+
+    // Build points with normalized values
     std::vector<std::pair<int, int>> points;
+    std::vector<double> normalized_values;
     points.reserve(n);
+    normalized_values.reserve(n);
+
     for (size_t i = 0; i < n; ++i) {
         double v = clamp((data[i] - min_val) / range, 0.0, 1.0);
+        normalized_values.push_back(v);
         int px = x + 1 + static_cast<int>((static_cast<double>(i) / (n - 1)) * inner_w);
         int py = y + h - 1 - static_cast<int>(v * inner_h);
         points.emplace_back(px, py);
     }
 
-    // Gradient fill with additive blending
+    // Find local peaks for highlighting
+    std::vector<size_t> peak_indices;
+    if (sparkline_peak_highlight_ && data.size() >= 5) {
+        for (size_t i = 2; i < data.size() - 2; ++i) {
+            if (data[i] > data[i-1] && data[i] > data[i-2] &&
+                data[i] > data[i+1] && data[i] > data[i+2] &&
+                normalized_values[i] > 0.6) {
+                peak_indices.push_back(i);
+            }
+        }
+    }
+
+    // ===== EFFECT 8: Shadow/Depth =====
+    if (sparkline_shadow_) {
+        color_t shadow_col = scale_color(color, 0.3f);
+        int prev_x = points.front().first;
+        int prev_y = points.front().second + 2;
+        for (size_t i = 1; i < points.size(); ++i) {
+            int px = points[i].first;
+            int py = points[i].second + 2;
+            drawLine(prev_x, prev_y, px, py, shadow_col);
+            prev_x = px;
+            prev_y = py;
+        }
+    }
+
+    // ===== EFFECT 5: Enhanced Fill with additive blending =====
     uint8_t fr, fg, fb;
     rgb565_to_rgb888(color, fr, fg, fb);
     int bottom_y = y + h - 1;
+
     for (size_t i = 0; i + 1 < points.size(); ++i) {
         auto [x0, y0] = points[i];
         auto [x1, y1] = points[i + 1];
@@ -1277,18 +1322,47 @@ void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int 
             if (top < y) top = y;
             if (top > bottom_y) top = bottom_y;
             double denom = std::max(1.0, static_cast<double>(bottom_y - top));
+
             for (int py = top; py <= bottom_y; ++py) {
                 if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
                 double norm = (py - top_f) / denom;
-                double intensity = FILL_INTENSITY_SERIES * fast_exp(FILL_DECAY_SERIES * norm);
+                double intensity;
+
+                if (sparkline_enhanced_fill_) {
+                    // Two-stage gradient for series
+                    if (norm < 0.15) {
+                        intensity = FILL_INTENSITY_SERIES * (1.0 - norm * 3.0);
+                    } else {
+                        intensity = FILL_INTENSITY_SERIES * 0.7 * fast_exp(FILL_DECAY_SERIES * (norm - 0.15));
+                    }
+                } else {
+                    intensity = FILL_INTENSITY_SERIES * fast_exp(FILL_DECAY_SERIES * norm);
+                }
+
                 if (intensity < 0.001) continue;
                 size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
+
+                // EFFECT 9: Color zones
+                uint8_t fill_r = fr, fill_g = fg, fill_b = fb;
+                if (sparkline_color_zones_ && i < normalized_values.size()) {
+                    double val = normalized_values[i];
+                    if (val < 0.33) {
+                        fill_r = static_cast<uint8_t>(fr * 0.9);
+                        fill_g = static_cast<uint8_t>(fg * 1.0);
+                        fill_b = static_cast<uint8_t>(fb * 1.1);
+                    } else if (val > 0.66) {
+                        fill_r = static_cast<uint8_t>(std::min(255, static_cast<int>(fr * 1.1)));
+                        fill_g = static_cast<uint8_t>(fg * 0.97);
+                        fill_b = static_cast<uint8_t>(fb * 0.9);
+                    }
+                }
+
                 color_t dst = (*target_buffer_)[idx];
                 uint8_t dr, dg, db;
                 rgb565_to_rgb888(dst, dr, dg, db);
-                int nr = std::min(255, static_cast<int>(dr) + static_cast<int>(fr * intensity));
-                int ng = std::min(255, static_cast<int>(dg) + static_cast<int>(fg * intensity));
-                int nb = std::min(255, static_cast<int>(db) + static_cast<int>(fb * intensity));
+                int nr = std::min(255, static_cast<int>(dr) + static_cast<int>(fill_r * intensity));
+                int ng = std::min(255, static_cast<int>(dg) + static_cast<int>(fill_g * intensity));
+                int nb = std::min(255, static_cast<int>(db) + static_cast<int>(fill_b * intensity));
                 (*target_buffer_)[idx] = rgb888_to_rgb565(static_cast<uint8_t>(nr),
                                                           static_cast<uint8_t>(ng),
                                                           static_cast<uint8_t>(nb));
@@ -1296,23 +1370,100 @@ void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int 
         }
     }
 
-    // Draw lines on top
+    // ===== EFFECT 3: Gradient Line + EFFECT 6: Dynamic Line Thickness =====
     int prev_x = points.front().first;
     int prev_y = points.front().second;
     for (size_t i = 1; i < points.size(); ++i) {
         int px = points[i].first;
         int py = points[i].second;
-        if (shadow_color != color) {
+
+        double val_prev = normalized_values[i - 1];
+        double val_curr = normalized_values[i];
+        double val_avg = (val_prev + val_curr) * 0.5;
+
+        // EFFECT 3: Gradient coloring
+        color_t line_color = color;
+        if (sparkline_gradient_line_) {
+            if (val_avg < 0.33) {
+                line_color = interpolate_color(scale_color(color, 0.75f), color, val_avg * 3.0);
+            } else if (val_avg > 0.66) {
+                color_t hot = interpolate_color(color, RGB(255, 200, 120), 0.35);
+                line_color = interpolate_color(color, hot, (val_avg - 0.66) * 3.0);
+            }
+        }
+
+        // EFFECT 6: Dynamic thickness
+        int lw = width;
+        if (sparkline_dynamic_width_ && val_avg > 0.5) {
+            lw = width + 1;
+        }
+
+        if (shadow_color != color && !sparkline_shadow_) {
             drawLine(prev_x, prev_y + 1, px, py + 1, shadow_color);
         }
-        drawLine(prev_x, prev_y, px, py, color);
-        if (width > 1) {
-            drawLine(prev_x, prev_y + 1, px, py + 1, color);
+        drawLine(prev_x, prev_y, px, py, line_color);
+        if (lw > 1) {
+            drawLine(prev_x, prev_y + 1, px, py + 1, line_color);
         }
+        if (lw > 2) {
+            drawLine(prev_x, prev_y - 1, px, py - 1, line_color);
+        }
+
         prev_x = px;
         prev_y = py;
     }
-    drawFilledCircle(prev_x, prev_y, 2, color);
+
+    // ===== EFFECT 2: Peak Highlights with Bloom =====
+    if (sparkline_peak_highlight_) {
+        for (size_t pi : peak_indices) {
+            if (pi >= points.size()) continue;
+            int px = points[pi].first;
+            int py = points[pi].second;
+
+            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.4);
+            drawFilledCircle(px, py, 5, scale_color(glow, 0.15f));
+            drawFilledCircle(px, py, 4, scale_color(glow, 0.3f));
+            drawFilledCircle(px, py, 3, scale_color(glow, 0.5f));
+            drawFilledCircle(px, py, 2, glow);
+        }
+    }
+
+    // ===== EFFECT 4: Particle Trails =====
+    if (sparkline_particles_ && data.size() >= 3) {
+        for (size_t i = 2; i < data.size(); ++i) {
+            double change = std::abs(normalized_values[i] - normalized_values[i-1]);
+            if (change > 0.12) {
+                int px = points[i].first;
+                int py = points[i].second;
+                int dir = (normalized_values[i] > normalized_values[i-1]) ? -1 : 1;
+                for (int j = 1; j <= 4; ++j) {
+                    int trail_y = py + dir * j * 4;
+                    float trail_alpha = 0.5f * (1.0f - j * 0.2f);
+                    color_t trail_color = scale_color(color, trail_alpha);
+                    if (trail_y >= y && trail_y < y + h) {
+                        drawLine(px - 1, trail_y, px + 1, trail_y, trail_color);
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== EFFECT 1: Endpoint Pulse Animation with Glow =====
+    if (sparkline_pulse_) {
+        double activity = normalized_values.back();
+        double freq = 1.0 + activity * 1.2;
+        double pulse_scale = 1.0 + 0.35 * std::sin(time_sec * 3.14159 * freq);
+
+        int pulse_r = static_cast<int>(3.0 * pulse_scale);
+        int glow_r = pulse_r + 3;
+
+        drawFilledCircle(prev_x, prev_y, glow_r, scale_color(color, 0.2f));
+        drawFilledCircle(prev_x, prev_y, glow_r - 1, scale_color(color, 0.4f));
+        drawFilledCircle(prev_x, prev_y, pulse_r, color);
+        drawFilledCircle(prev_x, prev_y, std::max(1, pulse_r - 1), interpolate_color(color, RGB(255, 255, 255), 0.5));
+    } else {
+        drawFilledCircle(prev_x, prev_y, 2, color);
+    }
 }
 
 void Renderer::drawRingGauge(int cx, int cy, int r, int thickness, double frac,
@@ -1439,7 +1590,9 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
                               const std::deque<double>& series_a,
                               const std::deque<double>& series_b,
                               double min_val, double max_val,
-                              color_t color_a, color_t color_b) {
+                              color_t color_a, color_t color_b,
+                              MetricType metric_type_a, MetricType metric_type_b,
+                              AnimationEngine& animator, double time_sec) {
     drawPanelFrame(x, y, w, h, title, subtitle);
     if (!values.empty()) {
         int vw = measureTextWidth(values, 11.0f);
@@ -1475,8 +1628,8 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
     }
     color_t shadow_a = scale_color(color_a, 0.5f);
     color_t shadow_b = scale_color(color_b, 0.5f);
-    drawSeriesLine(series_a, gx, gy, gw, gh, min_val, max_val, color_a, shadow_a, 2);
-    drawSeriesLine(series_b, gx, gy, gw, gh, min_val, max_val, color_b, shadow_b, 2);
+    drawSeriesLine(series_a, gx, gy, gw, gh, min_val, max_val, color_a, shadow_a, 2, metric_type_a, animator, time_sec);
+    drawSeriesLine(series_b, gx, gy, gw, gh, min_val, max_val, color_b, shadow_b, 2, metric_type_b, animator, time_sec);
 }
 
 void Renderer::drawVitalsPanel(int x, int y, int w, int h,
