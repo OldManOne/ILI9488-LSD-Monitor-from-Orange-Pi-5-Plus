@@ -1027,11 +1027,10 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
             int px = points[pi].first;
             int py = points[pi].second;
 
-            // Draw bloom glow around peak
-            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.5);
-            drawFilledCircle(px, py, 4, scale_color(glow, 0.2f));
-            drawFilledCircle(px, py, 3, scale_color(glow, 0.4f));
-            drawFilledCircle(px, py, 2, glow);
+            // Subtle, delicate peak markers for sparklines
+            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.3);
+            drawFilledCircle(px, py, 2, scale_color(glow, 0.12f));  // very faint outer glow
+            drawFilledCircle(px, py, 1, scale_color(glow, 0.35f));  // small center dot
         }
     }
 
@@ -1420,11 +1419,10 @@ void Renderer::drawSeriesLine(const std::deque<double>& data, int x, int y, int 
             int px = points[pi].first;
             int py = points[pi].second;
 
-            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.4);
-            drawFilledCircle(px, py, 5, scale_color(glow, 0.15f));
-            drawFilledCircle(px, py, 4, scale_color(glow, 0.3f));
-            drawFilledCircle(px, py, 3, scale_color(glow, 0.5f));
-            drawFilledCircle(px, py, 2, glow);
+            // Subtle, delicate peak markers - barely visible glow
+            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.3);
+            drawFilledCircle(px, py, 2, scale_color(glow, 0.12f));  // very faint outer glow
+            drawFilledCircle(px, py, 1, scale_color(glow, 0.35f));  // small center dot
         }
     }
 
