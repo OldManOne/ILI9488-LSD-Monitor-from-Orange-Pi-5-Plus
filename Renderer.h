@@ -159,6 +159,18 @@ private:
     bool net1_initialized_ = false;
     bool net2_initialized_ = false;
 
+    // Sparkline visual enhancements
+    bool sparkline_pulse_ = true;              // Endpoint pulse animation
+    bool sparkline_peak_highlight_ = true;     // Peak highlights with bloom
+    bool sparkline_gradient_line_ = true;      // Gradient line coloring
+    bool sparkline_particles_ = true;          // Particle trails
+    bool sparkline_enhanced_fill_ = true;      // Two-stage fill gradient
+    bool sparkline_dynamic_width_ = true;      // Dynamic line thickness
+    bool sparkline_baseline_shimmer_ = true;   // Shimmer effect on baseline
+    bool sparkline_shadow_ = true;             // Shadow/depth effect
+    bool sparkline_color_zones_ = true;        // Color accents for zones
+    bool sparkline_smooth_transitions_ = true; // Enhanced color transitions
+
     // Screen mode switching
     enum class ScreenMode { MAIN, PRINT };
     ScreenMode screen_mode_ = ScreenMode::MAIN;

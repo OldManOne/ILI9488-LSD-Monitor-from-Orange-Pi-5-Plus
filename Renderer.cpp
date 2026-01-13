@@ -228,6 +228,18 @@ Renderer::Renderer() {
     net2_smooth_ = 0.0;
     net1_initialized_ = false;
     net2_initialized_ = false;
+
+    // Sparkline visual enhancements
+    sparkline_pulse_ = getenv_bool("LCD_SPARKLINE_PULSE", sparkline_pulse_);
+    sparkline_peak_highlight_ = getenv_bool("LCD_SPARKLINE_PEAK_HIGHLIGHT", sparkline_peak_highlight_);
+    sparkline_gradient_line_ = getenv_bool("LCD_SPARKLINE_GRADIENT_LINE", sparkline_gradient_line_);
+    sparkline_particles_ = getenv_bool("LCD_SPARKLINE_PARTICLES", sparkline_particles_);
+    sparkline_enhanced_fill_ = getenv_bool("LCD_SPARKLINE_ENHANCED_FILL", sparkline_enhanced_fill_);
+    sparkline_dynamic_width_ = getenv_bool("LCD_SPARKLINE_DYNAMIC_WIDTH", sparkline_dynamic_width_);
+    sparkline_baseline_shimmer_ = getenv_bool("LCD_SPARKLINE_BASELINE_SHIMMER", sparkline_baseline_shimmer_);
+    sparkline_shadow_ = getenv_bool("LCD_SPARKLINE_SHADOW", sparkline_shadow_);
+    sparkline_color_zones_ = getenv_bool("LCD_SPARKLINE_COLOR_ZONES", sparkline_color_zones_);
+    sparkline_smooth_transitions_ = getenv_bool("LCD_SPARKLINE_SMOOTH_TRANSITIONS", sparkline_smooth_transitions_);
 }
 
 Renderer::~Renderer() {
@@ -762,6 +774,7 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
     double zoom_end = SparklineZoom::NET_ZOOM_END;
     double min_range = SparklineZoom::MIN_RANGE_NET;
     std::string anim_key = "net1_gamma";
+    std::string pulse_key = "net1_pulse";
 
     switch (metric_type) {
         case MetricType::CPU:
@@ -769,24 +782,28 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
             zoom_end = SparklineZoom::CPU_ZOOM_END;
             min_range = SparklineZoom::MIN_RANGE_CPU;
             anim_key = "cpu_gamma";
+            pulse_key = "cpu_pulse";
             break;
         case MetricType::TEMP:
             zoom_start = SparklineZoom::TEMP_ZOOM_START;
             zoom_end = SparklineZoom::TEMP_ZOOM_END;
             min_range = SparklineZoom::MIN_RANGE_TEMP;
             anim_key = "temp_gamma";
+            pulse_key = "temp_pulse";
             break;
         case MetricType::NET1:
             zoom_start = SparklineZoom::NET_ZOOM_START;
             zoom_end = SparklineZoom::NET_ZOOM_END;
             min_range = SparklineZoom::MIN_RANGE_NET;
             anim_key = "net1_gamma";
+            pulse_key = "net1_pulse";
             break;
         case MetricType::NET2:
             zoom_start = SparklineZoom::NET_ZOOM_START;
             zoom_end = SparklineZoom::NET_ZOOM_END;
             min_range = SparklineZoom::MIN_RANGE_NET;
             anim_key = "net2_gamma";
+            pulse_key = "net2_pulse";
             break;
         default:
             break;
@@ -796,12 +813,11 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
     double data_min = *std::min_element(data.begin(), data.end());
     double data_max = *std::max_element(data.begin(), data.end());
     double data_range = data_max - data_min;
-    // Use relative threshold: flat if range < 3% of scale (adaptive to current traffic level)
     double scale_range = max_val - min_val;
     double relative_threshold = 0.03 * scale_range;
     bool is_flat = (data_range < std::max(relative_threshold, min_range * 0.2));
 
-    // Calculate zoom factor using blended reference (avoids sudden zoom-out on spikes)
+    // Calculate zoom factor using blended reference
     double ref = 0.7 * max_val + 0.3 * data.back();
     double t = clamp((ref - zoom_start) / (zoom_end - zoom_start + 1e-9), 0.0, 1.0);
 
@@ -810,15 +826,16 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
     animator.set_target(anim_key, target_gamma);
     double gamma = animator.get(anim_key, 1.0);
 
-    // Adaptive baseline: lower when zoomed (0.85), normal when linear (0.75)
+    // Adaptive baseline
     double baseline_frac = 0.85 - t * 0.10;
     int baseline_y_pos = y + static_cast<int>(h * baseline_frac);
 
-    // Build points
+    // Build points with normalized values
     std::vector<std::pair<int, int>> points;
+    std::vector<double> normalized_values;
     points.reserve(data.size());
+    normalized_values.reserve(data.size());
 
-    // Pre-calculate flat line level based on last value (not center)
     double flat_v = 0.5;
     if (is_flat) {
         double v0 = clamp((data.back() - min_val) / (max_val - min_val + 1e-9), 0.0, 1.0);
@@ -827,28 +844,71 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
 
     for (size_t i = 0; i < data.size(); ++i) {
         double v;
-
         if (is_flat) {
             v = flat_v;
         } else {
-            // Normalize value
             v = clamp((data[i] - min_val) / (max_val - min_val + 1e-9), 0.0, 1.0);
-            // Apply gamma for visual zoom effect
             v = std::pow(v, gamma);
         }
-
+        normalized_values.push_back(v);
         int px = x + 1 + static_cast<int>((static_cast<double>(i) / (data.size() - 1)) * (w - 2));
         int py = y + h - 1 - static_cast<int>(v * (h - 2));
         points.emplace_back(px, py);
     }
 
-    // Gradient fill (alpha blend with background)
+    // Find local peaks for highlighting
+    std::vector<size_t> peak_indices;
+    if (sparkline_peak_highlight_ && !is_flat && data.size() >= 5) {
+        for (size_t i = 2; i < data.size() - 2; ++i) {
+            if (data[i] > data[i-1] && data[i] > data[i-2] &&
+                data[i] > data[i+1] && data[i] > data[i+2] &&
+                normalized_values[i] > 0.6) {
+                peak_indices.push_back(i);
+            }
+        }
+    }
+
+    // ===== EFFECT 8: Shadow/Depth =====
+    if (sparkline_shadow_ && target_buffer_) {
+        color_t shadow_color = scale_color(color, 0.25f);
+        uint8_t sr, sg, sb;
+        rgb565_to_rgb888(shadow_color, sr, sg, sb);
+        uint8_t br, bg, bb;
+        rgb565_to_rgb888(bg_color, br, bg, bb);
+
+        for (size_t i = 1; i < points.size(); ++i) {
+            int x0 = points[i - 1].first;
+            int y0 = points[i - 1].second + 2; // Shadow offset
+            int x1 = points[i].first;
+            int y1 = points[i].second + 2;
+            if (x0 > x1) {
+                std::swap(x0, x1);
+                std::swap(y0, y1);
+            }
+            int dx = std::max(1, x1 - x0);
+            for (int xi = x0; xi <= x1; ++xi) {
+                double tseg = static_cast<double>(xi - x0) / dx;
+                int yi = static_cast<int>(std::round(y0 + (y1 - y0) * tseg));
+                if (xi >= 0 && xi < DISPLAY_WIDTH && yi >= 0 && yi < DISPLAY_HEIGHT) {
+                    size_t idx = static_cast<size_t>(yi) * DISPLAY_WIDTH + static_cast<size_t>(xi);
+                    double alpha = 0.3;
+                    uint8_t r = static_cast<uint8_t>(sr * alpha + br * (1.0 - alpha));
+                    uint8_t g = static_cast<uint8_t>(sg * alpha + bg * (1.0 - alpha));
+                    uint8_t b = static_cast<uint8_t>(sb * alpha + bb * (1.0 - alpha));
+                    (*target_buffer_)[idx] = rgb888_to_rgb565(r, g, b);
+                }
+            }
+        }
+    }
+
+    // ===== EFFECT 5: Enhanced Fill Gradient (two-stage) =====
     if (target_buffer_) {
         uint8_t fr, fg, fb;
         uint8_t br, bg, bb;
         rgb565_to_rgb888(color, fr, fg, fb);
         rgb565_to_rgb888(bg_color, br, bg, bb);
         int bottom_y = y + h - 1;
+
         for (size_t i = 0; i + 1 < points.size(); ++i) {
             auto [x0, y0] = points[i];
             auto [x1, y1] = points[i + 1];
@@ -864,23 +924,54 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
                 if (top < y) top = y;
                 if (top > bottom_y) top = bottom_y;
                 double denom = std::max(1.0, static_cast<double>(bottom_y - top));
+
                 for (int py = top; py <= bottom_y; ++py) {
                     double norm = (py - top_f) / denom;
-                    double alpha = FILL_ALPHA_SPARK * fast_exp(FILL_DECAY_SPARK * norm);
+                    double alpha;
+
+                    if (sparkline_enhanced_fill_) {
+                        // Two-stage gradient: bright near line, then exponential fade
+                        if (norm < 0.2) {
+                            alpha = FILL_ALPHA_SPARK * (1.0 - norm * 2.0);
+                        } else {
+                            alpha = FILL_ALPHA_SPARK * 0.6 * fast_exp(FILL_DECAY_SPARK * (norm - 0.2));
+                        }
+                    } else {
+                        alpha = FILL_ALPHA_SPARK * fast_exp(FILL_DECAY_SPARK * norm);
+                    }
+
                     if (alpha < 0.001) continue;
                     if (xi < 0 || xi >= DISPLAY_WIDTH || py < 0 || py >= DISPLAY_HEIGHT) continue;
+
                     size_t idx = static_cast<size_t>(py) * DISPLAY_WIDTH + static_cast<size_t>(xi);
-                    uint8_t r = static_cast<uint8_t>(fr * alpha + br * (1.0 - alpha));
-                    uint8_t g = static_cast<uint8_t>(fg * alpha + bg * (1.0 - alpha));
-                    uint8_t b = static_cast<uint8_t>(fb * alpha + bb * (1.0 - alpha));
+
+                    // EFFECT 9: Color zones - slightly shift hue based on value
+                    uint8_t fill_r = fr, fill_g = fg, fill_b = fb;
+                    if (sparkline_color_zones_ && i < normalized_values.size()) {
+                        double val = normalized_values[i];
+                        if (val < 0.33) {
+                            // Low zone: cooler tones
+                            fill_r = static_cast<uint8_t>(fr * 0.85);
+                            fill_g = static_cast<uint8_t>(fg * 1.0);
+                            fill_b = static_cast<uint8_t>(fb * 1.15);
+                        } else if (val > 0.66) {
+                            // High zone: warmer tones
+                            fill_r = static_cast<uint8_t>(std::min(255, static_cast<int>(fr * 1.15)));
+                            fill_g = static_cast<uint8_t>(fg * 0.95);
+                            fill_b = static_cast<uint8_t>(fb * 0.85);
+                        }
+                    }
+
+                    uint8_t r = static_cast<uint8_t>(fill_r * alpha + br * (1.0 - alpha));
+                    uint8_t g = static_cast<uint8_t>(fill_g * alpha + bg * (1.0 - alpha));
+                    uint8_t b = static_cast<uint8_t>(fill_b * alpha + bb * (1.0 - alpha));
                     (*target_buffer_)[idx] = rgb888_to_rgb565(r, g, b);
                 }
             }
         }
     }
 
-    // Draw lines (interpolate per-x for smoother look between sparse samples)
-    int lw = std::max(1, line_width);
+    // ===== EFFECT 3: Gradient Line + EFFECT 6: Dynamic Line Thickness =====
     for (size_t i = 1; i < points.size(); ++i) {
         int x0 = points[i - 1].first;
         int y0 = points[i - 1].second;
@@ -890,23 +981,133 @@ void Renderer::drawSparkline(int x, int y, int w, int h,
             std::swap(x0, x1);
             std::swap(y0, y1);
         }
+
+        double val_prev = normalized_values[i - 1];
+        double val_curr = (i < normalized_values.size()) ? normalized_values[i] : val_prev;
+
         int dx = std::max(1, x1 - x0);
         for (int xi = x0; xi <= x1; ++xi) {
             double tseg = static_cast<double>(xi - x0) / dx;
             int yi = static_cast<int>(std::round(y0 + (y1 - y0) * tseg));
-            drawLine(xi, yi, xi, yi, color);
+            double val_interp = val_prev + (val_curr - val_prev) * tseg;
+
+            // EFFECT 3: Gradient coloring based on value
+            color_t line_color = color;
+            if (sparkline_gradient_line_) {
+                if (val_interp < 0.33) {
+                    line_color = interpolate_color(scale_color(color, 0.7f), color, val_interp * 3.0);
+                } else if (val_interp > 0.66) {
+                    color_t hot = interpolate_color(color, RGB(255, 200, 100), 0.4);
+                    line_color = interpolate_color(color, hot, (val_interp - 0.66) * 3.0);
+                }
+            }
+
+            // EFFECT 6: Dynamic line thickness
+            int lw = line_width;
+            if (sparkline_dynamic_width_) {
+                lw = (val_interp > 0.5) ? std::max(2, line_width + 1) : line_width;
+            }
+
+            drawLine(xi, yi, xi, yi, line_color);
             if (lw > 1) {
-                drawLine(xi, yi + 1, xi, yi + 1, color);
+                drawLine(xi, yi + 1, xi, yi + 1, line_color);
+            }
+            if (lw > 2) {
+                drawLine(xi, yi - 1, xi, yi - 1, line_color);
             }
         }
     }
 
-    // Draw adaptive baseline (reference line)
-    drawLine(x + 1, baseline_y_pos, x + w - 2, baseline_y_pos, current_theme_.bar_border);
+    // ===== EFFECT 2: Peak Highlights with Bloom =====
+    if (sparkline_peak_highlight_) {
+        for (size_t pi : peak_indices) {
+            if (pi >= points.size()) continue;
+            int px = points[pi].first;
+            int py = points[pi].second;
 
-    // Draw endpoint circle
+            // Draw bloom glow around peak
+            color_t glow = interpolate_color(color, RGB(255, 255, 255), 0.5);
+            drawFilledCircle(px, py, 4, scale_color(glow, 0.2f));
+            drawFilledCircle(px, py, 3, scale_color(glow, 0.4f));
+            drawFilledCircle(px, py, 2, glow);
+        }
+    }
+
+    // ===== EFFECT 4: Particle Trails =====
+    if (sparkline_particles_ && data.size() >= 3) {
+        // Find rapid changes
+        for (size_t i = 2; i < data.size(); ++i) {
+            double change = std::abs(normalized_values[i] - normalized_values[i-1]);
+            if (change > 0.15) { // Significant change
+                int px = points[i].first;
+                int py = points[i].second;
+
+                // Draw small trailing particles
+                int dir = (normalized_values[i] > normalized_values[i-1]) ? -1 : 1;
+                for (int j = 1; j <= 3; ++j) {
+                    int trail_y = py + dir * j * 3;
+                    float trail_alpha = 0.6f * (1.0f - j * 0.25f);
+                    color_t trail_color = scale_color(color, trail_alpha);
+                    if (trail_y >= y && trail_y < y + h) {
+                        drawLine(px, trail_y, px, trail_y, trail_color);
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== EFFECT 7: Shimmer Effect on Baseline =====
+    if (sparkline_baseline_shimmer_) {
+        // Animated dashed line with shimmer
+        static double shimmer_phase = 0.0;
+        shimmer_phase += 0.15; // Increment for animation
+        if (shimmer_phase > 20.0) shimmer_phase = 0.0;
+
+        int dash_len = 4;
+        int gap_len = 3;
+        for (int xi = x + 1; xi < x + w - 1; ++xi) {
+            int phase_offset = static_cast<int>(shimmer_phase);
+            int pos = (xi - x + phase_offset) % (dash_len + gap_len);
+            if (pos < dash_len) {
+                // Shimmer intensity varies along the line
+                float shimmer = 0.7f + 0.3f * std::sin((xi - x) * 0.2 + shimmer_phase);
+                color_t shimmer_color = scale_color(current_theme_.bar_border, shimmer);
+                drawLine(xi, baseline_y_pos, xi, baseline_y_pos, shimmer_color);
+            }
+        }
+    } else {
+        // Regular baseline
+        drawLine(x + 1, baseline_y_pos, x + w - 2, baseline_y_pos, current_theme_.bar_border);
+    }
+
+    // ===== EFFECT 1: Endpoint Pulse Animation with Glow =====
     auto [px, py] = points.back();
-    drawCircle(px, py, 2, color);
+    if (sparkline_pulse_) {
+        // Animate pulse size using AnimationEngine
+        static double pulse_time = 0.0;
+        pulse_time += 0.08;
+        if (pulse_time > 6.28) pulse_time = 0.0;
+
+        // Pulse frequency varies with activity (higher values pulse faster)
+        double activity = normalized_values.back();
+        double freq = 1.0 + activity * 1.5;
+        double pulse_scale = 1.0 + 0.4 * std::sin(pulse_time * freq);
+
+        int pulse_r = static_cast<int>(2.5 * pulse_scale);
+        int glow_r = pulse_r + 2;
+
+        // Outer glow
+        drawFilledCircle(px, py, glow_r, scale_color(color, 0.25f));
+        // Mid glow
+        drawFilledCircle(px, py, glow_r - 1, scale_color(color, 0.5f));
+        // Core pulse
+        drawFilledCircle(px, py, pulse_r, color);
+        // Bright center
+        drawFilledCircle(px, py, std::max(1, pulse_r - 1), interpolate_color(color, RGB(255, 255, 255), 0.6));
+    } else {
+        // Static endpoint
+        drawCircle(px, py, 2, color);
+    }
 }
 
 void Renderer::drawProgressBar(int x, int y, int w, int h, double value, color_t color, color_t bg) {
