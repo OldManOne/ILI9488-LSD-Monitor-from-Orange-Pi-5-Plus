@@ -73,7 +73,8 @@ private:
     void drawPanelFrame(int x, int y, int w, int h, const std::string& title, const std::string& subtitle);
     void drawSeriesLine(const std::deque<double>& data, int x, int y, int w, int h,
                         double min_val, double max_val, color_t color,
-                        color_t shadow_color, int width);
+                        color_t shadow_color, int width, MetricType metric_type,
+                        AnimationEngine& animator, double time_sec);
     void drawRingGauge(int cx, int cy, int r, int thickness, double frac,
                        color_t active, color_t inactive, int segments);
     void drawArcPolyline(int cx, int cy, int r, double a0, double a1, color_t color);
@@ -93,7 +94,9 @@ private:
                         const std::deque<double>& series_a,
                         const std::deque<double>& series_b,
                         double min_val, double max_val,
-                        color_t color_a, color_t color_b);
+                        color_t color_a, color_t color_b,
+                        MetricType metric_type_a, MetricType metric_type_b,
+                        AnimationEngine& animator, double time_sec);
     void drawVitalsPanel(int x, int y, int w, int h,
                          double cpu, double temp, double mem,
                          double net1, const std::string& wan_status,
