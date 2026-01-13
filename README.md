@@ -51,6 +51,81 @@ Environment=LCD_NET_IF2=enP4p65s0
 - **LCD_NET_IF1 / LCD_NET_IF2** — интерфейсы сети
 - **LCD_NET_AUTOSCALE** — авто‑масштаб графика
 
+### Визуальные эффекты спарклайнов
+**Все эффекты включены по умолчанию.** Для отключения установите значение `false` или `0`.
+
+- **LCD_SPARKLINE_PULSE** — анимация пульсации конечной точки с glow-эффектом (по умолчанию `true`)
+  - Частота пульсации зависит от активности (выше значение = быстрее пульсация)
+  - Создает эффект "живого" графика
+
+- **LCD_SPARKLINE_PEAK_HIGHLIGHT** — подсветка локальных пиков с bloom-эффектом (по умолчанию `true`)
+  - Автоматически находит и подсвечивает максимумы на графике
+  - Использует многослойное glow-свечение для глубины
+
+- **LCD_SPARKLINE_GRADIENT_LINE** — градиентная окраска линии по значению (по умолчанию `true`)
+  - Низкие значения: приглушенные тона
+  - Высокие значения: теплые/яркие оттенки
+  - Плавный переход между зонами
+
+- **LCD_SPARKLINE_PARTICLES** — частицы-следы при резких изменениях (по умолчанию `true`)
+  - Появляются при скачках значений >15%
+  - Создают эффект движения данных
+
+- **LCD_SPARKLINE_ENHANCED_FILL** — двухступенчатая градиентная заливка (по умолчанию `true`)
+  - Яркая зона у линии графика
+  - Плавное затухание к основанию
+  - Больше глубины и объема
+
+- **LCD_SPARKLINE_DYNAMIC_WIDTH** — динамическая толщина линии (по умолчанию `true`)
+  - Линия утолщается на пиках значений
+  - Создает эффект "потока"
+
+- **LCD_SPARKLINE_BASELINE_SHIMMER** — мерцание базовой линии (по умолчанию `true`)
+  - Анимированная пунктирная линия
+  - Волнообразное изменение интенсивности
+
+- **LCD_SPARKLINE_SHADOW** — тень под графиком для глубины (по умолчанию `true`)
+  - Смещение на 2 пикселя вниз
+  - Создает эффект приподнятости
+
+- **LCD_SPARKLINE_COLOR_ZONES** — цветовые акценты для разных зон (по умолчанию `true`)
+  - Низкие значения: холодные оттенки
+  - Средние значения: нейтральные
+  - Высокие значения: теплые оттенки
+
+- **LCD_SPARKLINE_SMOOTH_TRANSITIONS** — плавные цветовые переходы idle/active (по умолчанию `true`)
+  - Улучшенные переходы при изменении режима
+  - Более насыщенные цвета в активном режиме
+
+**Пример отключения всех эффектов:**
+```bash
+LCD_SPARKLINE_PULSE=false \
+LCD_SPARKLINE_PEAK_HIGHLIGHT=false \
+LCD_SPARKLINE_GRADIENT_LINE=false \
+LCD_SPARKLINE_PARTICLES=false \
+LCD_SPARKLINE_ENHANCED_FILL=false \
+LCD_SPARKLINE_DYNAMIC_WIDTH=false \
+LCD_SPARKLINE_BASELINE_SHIMMER=false \
+LCD_SPARKLINE_SHADOW=false \
+LCD_SPARKLINE_COLOR_ZONES=false \
+LCD_SPARKLINE_SMOOTH_TRANSITIONS=false \
+./lcd_monitor
+```
+
+**Пример включения только базовых эффектов (минимальная нагрузка):**
+```bash
+LCD_SPARKLINE_PULSE=true \
+LCD_SPARKLINE_GRADIENT_LINE=true \
+LCD_SPARKLINE_ENHANCED_FILL=true \
+LCD_SPARKLINE_PEAK_HIGHLIGHT=false \
+LCD_SPARKLINE_PARTICLES=false \
+LCD_SPARKLINE_DYNAMIC_WIDTH=false \
+LCD_SPARKLINE_BASELINE_SHIMMER=false \
+LCD_SPARKLINE_SHADOW=false \
+LCD_SPARKLINE_COLOR_ZONES=false \
+./lcd_monitor
+```
+
 ### ILI9488 параметры SPI
 - **ILI9488_SPI_SPEED_HZ** — скорость SPI (по умолчанию 16MHz)
 - **ILI9488_SPI_CHUNK** — размер чанка (по умолчанию 1024)
@@ -157,8 +232,19 @@ LCD_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
 
 ## Changelog (кратко)
 ### 2026‑01
+- **Визуальные эффекты спарклайнов** — добавлено 10 настраиваемых эффектов:
+  - Пульсация конечной точки с glow-эффектом
+  - Подсветка пиков с bloom-эффектом
+  - Градиентная окраска линии по значению
+  - Частицы-следы при резких изменениях
+  - Двухступенчатая градиентная заливка
+  - Динамическая толщина линии
+  - Мерцание базовой линии
+  - Тень под графиком
+  - Цветовые акценты для разных зон
+  - Плавные цветовые переходы
 - Добавлен Print Screen для Moonraker (превью модели + прогресс/ETA)
-- Логика карусели 10с/10с и “хвост” 60с после завершения печати
+- Логика карусели 10с/10с и "хвост" 60с после завершения печати
 - Частичная перерисовка (dirty‑rect) для повышения FPS
 
 
