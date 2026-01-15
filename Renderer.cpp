@@ -128,7 +128,8 @@ namespace Layout {
     constexpr int FOOTER_HEIGHT = 0;
     constexpr int MARGIN = 12;
     constexpr int GAP = 10;
-    constexpr int LEFT_PANEL_WIDTH = 310;
+    // Narrower right panel (~1.5x) to give sparklines more width
+    constexpr int LEFT_PANEL_WIDTH = 355;
     constexpr int VITALS_PANEL_HEIGHT = 160;
 }
 
