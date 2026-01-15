@@ -64,8 +64,12 @@ private:
     struct NetStats {
         uint64_t bytes;
         std::chrono::steady_clock::time_point time;
+        double smoothed_speed = 0.0;
+        int link_speed_mbps = -1;
+        std::chrono::steady_clock::time_point link_speed_checked;
     };
     std::map<std::string, NetStats> prev_net_stats_;
+    int get_interface_link_speed(const std::string& interface_name);
     
     // For async WAN status
     std::thread wan_worker_;
