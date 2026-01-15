@@ -233,43 +233,96 @@ double SystemMetrics::getCPUTemp() {
     return 0.0;
 }
 
+int SystemMetrics::get_interface_link_speed(const std::string& interface_name) {
+    std::string cmd = "ethtool " + interface_name + " 2>/dev/null | grep 'Speed:'";
+    std::string output;
+    if (exec_with_timeout(cmd.c_str(), 3, output)) {
+        // Parse "Speed: 2500Mb/s" or "Speed: 1000Mb/s" or "Speed: Unknown!"
+        std::regex speed_regex(R"(Speed:\s*(\d+)Mb/s)");
+        std::smatch match;
+        if (std::regex_search(output, match, speed_regex) && match.size() > 1) {
+            try {
+                return std::stoi(match[1].str());
+            } catch (...) {
+                return -1;
+            }
+        }
+    }
+    return -1; // Failed to detect link speed
+}
+
 void SystemMetrics::getNetworkSpeed(const std::string& interface_name, double& speed) {
     uint64_t current_bytes = 0;
     bool success = false;
 
-    // Try fast path first: read from /sys/class/net (instant, no shell exec)
-    try {
-        std::ifstream rx_file("/sys/class/net/" + interface_name + "/statistics/rx_bytes");
-        std::ifstream tx_file("/sys/class/net/" + interface_name + "/statistics/tx_bytes");
-        if (rx_file.is_open() && tx_file.is_open()) {
-            uint64_t rx, tx;
-            rx_file >> rx;
-            tx_file >> tx;
-            current_bytes = rx + tx;
-            success = true;
+    // Initialize NetStats structure if not exists
+    if (!prev_net_stats_.count(interface_name)) {
+        prev_net_stats_[interface_name] = {0, std::chrono::steady_clock::now(), 0.0, -1, std::chrono::steady_clock::now()};
+    }
+    auto& prev = prev_net_stats_[interface_name];
+    auto now = std::chrono::steady_clock::now();
+
+    // Check link speed periodically (every 30 seconds)
+    if (prev.link_speed_mbps < 0 ||
+        std::chrono::duration<double>(now - prev.link_speed_checked).count() > 30.0) {
+        prev.link_speed_mbps = get_interface_link_speed(interface_name);
+        prev.link_speed_checked = now;
+        if (debug_ && prev.link_speed_mbps > 0) {
+            std::cerr << "[" << interface_name << "] Link speed: "
+                      << prev.link_speed_mbps << " Mbps" << std::endl;
         }
-    } catch (...) {
-        success = false;
     }
 
-    // Fallback to ethtool only if sysfs failed (rare case)
-    if (!success) {
-        std::string cmd = "ethtool -S " + interface_name;
-        std::string output;
-        if (exec_with_timeout(cmd.c_str(), 5, output)) {
-            std::stringstream ss(output);
-            std::string line;
-            uint64_t rx_octets = 0, tx_octets = 0;
-            while (std::getline(ss, line)) {
-                if (line.find("rx_octets:") != std::string::npos) {
-                    sscanf(line.c_str(), "     rx_octets: %lu", &rx_octets);
-                }
-                if (line.find("tx_octets:") != std::string::npos) {
-                    sscanf(line.c_str(), "     tx_octets: %lu", &tx_octets);
+    // Try ethtool -S first (workaround for r8125 driver bug with incorrect sysfs rx_bytes)
+    std::string cmd = "ethtool -S " + interface_name + " 2>/dev/null";
+    std::string output;
+    if (exec_with_timeout(cmd.c_str(), 5, output)) {
+        std::stringstream ss(output);
+        std::string line;
+        uint64_t rx_octets = 0, tx_octets = 0;
+        bool found_rx = false, found_tx = false;
+
+        while (std::getline(ss, line)) {
+            if (line.find("rx_octets:") != std::string::npos) {
+                if (sscanf(line.c_str(), " rx_octets: %lu", &rx_octets) == 1) {
+                    found_rx = true;
                 }
             }
+            if (line.find("tx_octets:") != std::string::npos) {
+                if (sscanf(line.c_str(), " tx_octets: %lu", &tx_octets) == 1) {
+                    found_tx = true;
+                }
+            }
+        }
+
+        if (found_rx && found_tx) {
             current_bytes = rx_octets + tx_octets;
             success = true;
+            if (debug_) {
+                std::cerr << "[" << interface_name << "] ethtool: rx=" << rx_octets
+                          << " tx=" << tx_octets << std::endl;
+            }
+        }
+    }
+
+    // Fallback to sysfs only if ethtool failed
+    if (!success) {
+        try {
+            std::ifstream rx_file("/sys/class/net/" + interface_name + "/statistics/rx_bytes");
+            std::ifstream tx_file("/sys/class/net/" + interface_name + "/statistics/tx_bytes");
+            if (rx_file.is_open() && tx_file.is_open()) {
+                uint64_t rx, tx;
+                rx_file >> rx;
+                tx_file >> tx;
+                current_bytes = rx + tx;
+                success = true;
+                if (debug_) {
+                    std::cerr << "[" << interface_name << "] sysfs fallback: rx=" << rx
+                              << " tx=" << tx << std::endl;
+                }
+            }
+        } catch (...) {
+            success = false;
         }
     }
 
@@ -278,17 +331,65 @@ void SystemMetrics::getNetworkSpeed(const std::string& interface_name, double& s
         return;
     }
 
-    auto now = std::chrono::steady_clock::now();
-    if (prev_net_stats_.count(interface_name)) {
-        auto& prev = prev_net_stats_[interface_name];
+    // Calculate speed with protection against anomalies
+    if (prev.bytes > 0) {
         double time_delta = std::chrono::duration<double>(now - prev.time).count();
+
         if (time_delta > 0) {
-            uint64_t bytes_delta = (current_bytes > prev.bytes) ? (current_bytes - prev.bytes) : 0;
-            speed = (static_cast<double>(bytes_delta) * 8) / (time_delta * 1000000.0);
+            // Check for counter reset or overflow
+            if (current_bytes < prev.bytes) {
+                if (debug_) {
+                    std::cerr << "[" << interface_name << "] Counter reset detected: "
+                              << prev.bytes << " -> " << current_bytes << std::endl;
+                }
+                prev.bytes = current_bytes;
+                prev.time = now;
+                return; // Keep previous speed value
+            }
+
+            uint64_t bytes_delta = current_bytes - prev.bytes;
+            double calculated_speed = (static_cast<double>(bytes_delta) * 8) / (time_delta * 1000000.0);
+
+            // Dynamic sanity check based on link speed
+            double max_reasonable_speed;
+            if (prev.link_speed_mbps > 0) {
+                // Use 150% of link speed as limit (allows for burst traffic)
+                max_reasonable_speed = prev.link_speed_mbps * 1.5;
+            } else {
+                // Conservative fallback if link speed detection failed
+                max_reasonable_speed = 10000.0; // 10 Gbps
+            }
+
+            if (calculated_speed <= max_reasonable_speed) {
+                // Smoothing (interpolation from Python version)
+                const double INTERPOLATION_SPEED = 0.3;
+                double interpolation_factor = std::min(1.0, INTERPOLATION_SPEED * time_delta * 10.0);
+
+                if (prev.smoothed_speed > 0) {
+                    speed = prev.smoothed_speed + (calculated_speed - prev.smoothed_speed) * interpolation_factor;
+                } else {
+                    speed = calculated_speed;
+                }
+                prev.smoothed_speed = speed;
+            } else {
+                // Anomalous data detected - ignore and smooth down
+                if (debug_) {
+                    std::cerr << "[" << interface_name << "] WARNING: Unrealistic speed "
+                              << calculated_speed << " Mbps (max: " << max_reasonable_speed
+                              << " Mbps, bytes_delta=" << bytes_delta
+                              << ", time_delta=" << time_delta << "s) - IGNORED" << std::endl;
+                }
+                // Smoothly decay to zero
+                speed = (prev.smoothed_speed > 0.1) ? prev.smoothed_speed * 0.7 : 0.0;
+                prev.smoothed_speed = speed;
+                // Don't update prev.bytes - wait for correct data
+                return;
+            }
         }
     }
 
-    prev_net_stats_[interface_name] = {current_bytes, now};
+    prev.bytes = current_bytes;
+    prev.time = now;
 }
 
 int SystemMetrics::getUptime() {
