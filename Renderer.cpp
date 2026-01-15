@@ -1654,8 +1654,8 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
     color_t label_color_a = scale_color(color_a, 0.6f);
     color_t label_color_b = scale_color(color_b, 0.6f);
 
-    // Left labels for series A (NET1)
-    int label_x_left = x + 2;
+    // Left labels for series A (NET1) - inside graph with padding
+    int label_x_left = x + 12;
     std::string label_top_a = formatScaleValue(max_val_a);
     std::string label_mid_a = formatScaleValue(max_val_a / 2.0);
     std::string label_bot_a = formatScaleValue(min_val_a);
@@ -1663,11 +1663,16 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
     drawText(label_mid_a, label_x_left, gy + gh / 2 - 2, label_color_a, label_fs);
     drawText(label_bot_a, label_x_left, gy + gh - 9, label_color_a, label_fs);
 
-    // Right labels for series B (NET2)
-    int label_x_right = gx + gw + 4;
+    // Right labels for series B (NET2) - inside graph, right-aligned
     std::string label_top_b = formatScaleValue(max_val_b);
     std::string label_mid_b = formatScaleValue(max_val_b / 2.0);
     std::string label_bot_b = formatScaleValue(min_val_b);
+    // Measure widths to find the widest label for alignment
+    int tw_top = measureTextWidth(label_top_b, label_fs);
+    int tw_mid = measureTextWidth(label_mid_b, label_fs);
+    int tw_bot = measureTextWidth(label_bot_b, label_fs);
+    int max_tw = std::max({tw_top, tw_mid, tw_bot});
+    int label_x_right = gx + gw - max_tw - 3;  // 3px padding from right edge
     drawText(label_top_b, label_x_right, gy + 1, label_color_b, label_fs);
     drawText(label_mid_b, label_x_right, gy + gh / 2 - 2, label_color_b, label_fs);
     drawText(label_bot_b, label_x_right, gy + gh - 9, label_color_b, label_fs);
