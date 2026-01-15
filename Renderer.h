@@ -119,6 +119,7 @@ private:
     std::string formatUptime(int seconds) const;
     double computeNetScale(const std::deque<double>& history, double& smooth_max);
     color_t dimColor(color_t c) const;
+    std::string formatScaleValue(double value) const;
 
     std::vector<uint16_t>* target_buffer_ = nullptr;
     Theme current_theme_;
