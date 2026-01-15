@@ -93,7 +93,8 @@ private:
                         const std::string& label_b,
                         const std::deque<double>& series_a,
                         const std::deque<double>& series_b,
-                        double min_val, double max_val,
+                        double min_val_a, double max_val_a,
+                        double min_val_b, double max_val_b,
                         color_t color_a, color_t color_b,
                         MetricType metric_type_a, MetricType metric_type_b,
                         AnimationEngine& animator, double time_sec);

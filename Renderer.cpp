@@ -500,18 +500,20 @@ void Renderer::Render(const SystemMetrics& metrics,
 
     drawHeader(0, 0, DISPLAY_WIDTH, header_h, metrics);
 
-    double net_hist_max = 2500.0;
+    double net1_hist_max = 2500.0;
+    double net2_hist_max = 2500.0;
     if (net_autoscale_) {
-        double n1 = computeNetScale(history_net1_, net1_scale_max_);
-        double n2 = computeNetScale(history_net2_, net2_scale_max_);
-        net_hist_max = std::max(n1, n2);
+        net1_hist_max = computeNetScale(history_net1_, net1_scale_max_);
+        net2_hist_max = computeNetScale(history_net2_, net2_scale_max_);
     }
     std::string net_values = "N1 " + formatNet(net1) + "  N2 " + formatNet(net2);
     drawGraphPanel(g1_x, g1_y, g1_w, g1_h,
                    "Network Throughput", net_values,
-                   "last 120s | auto-scale",
+                   "last 120s | independent auto-scale",
                    "NET1 Mbps", "NET2 Mbps",
-                   history_net1_, history_net2_, 0.0, net_hist_max,
+                   history_net1_, history_net2_,
+                   0.0, net1_hist_max,
+                   0.0, net2_hist_max,
                    series_net1, series_net2,
                    MetricType::NET1, MetricType::NET2, animator, time_sec);
 
@@ -521,7 +523,9 @@ void Renderer::Render(const SystemMetrics& metrics,
                    "CPU & TEMP", cpu_values,
                    "last 120s | 0-100",
                    "CPU %", "TEMP C",
-                   history_cpu_, history_temp_, 0.0, 100.0,
+                   history_cpu_, history_temp_,
+                   0.0, 100.0,
+                   0.0, 100.0,
                    series_cpu, series_temp,
                    MetricType::CPU, MetricType::TEMP, animator, time_sec);
 
@@ -1587,7 +1591,8 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
                               const std::string& label_b,
                               const std::deque<double>& series_a,
                               const std::deque<double>& series_b,
-                              double min_val, double max_val,
+                              double min_val_a, double max_val_a,
+                              double min_val_b, double max_val_b,
                               color_t color_a, color_t color_b,
                               MetricType metric_type_a, MetricType metric_type_b,
                               AnimationEngine& animator, double time_sec) {
@@ -1627,8 +1632,8 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
     }
     color_t shadow_a = scale_color(color_a, 0.5f);
     color_t shadow_b = scale_color(color_b, 0.5f);
-    drawSeriesLine(series_a, gx, gy, gw, gh, min_val, max_val, color_a, shadow_a, 2, metric_type_a, animator, time_sec);
-    drawSeriesLine(series_b, gx, gy, gw, gh, min_val, max_val, color_b, shadow_b, 2, metric_type_b, animator, time_sec);
+    drawSeriesLine(series_a, gx, gy, gw, gh, min_val_a, max_val_a, color_a, shadow_a, 2, metric_type_a, animator, time_sec);
+    drawSeriesLine(series_b, gx, gy, gw, gh, min_val_b, max_val_b, color_b, shadow_b, 2, metric_type_b, animator, time_sec);
 }
 
 void Renderer::drawVitalsPanel(int x, int y, int w, int h,
