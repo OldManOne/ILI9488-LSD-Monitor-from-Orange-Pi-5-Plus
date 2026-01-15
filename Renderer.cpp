@@ -1651,7 +1651,7 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
     }
 
     // Draw scale labels for both series with independent scales
-    float label_fs = 9.0f;
+    float label_fs = 10.5f;
     color_t label_color_a = scale_color(color_a, 0.6f);
     color_t label_color_b = scale_color(color_b, 0.6f);
 
