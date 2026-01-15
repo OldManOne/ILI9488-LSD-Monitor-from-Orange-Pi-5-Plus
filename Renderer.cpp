@@ -374,6 +374,24 @@ std::string Renderer::formatNet(double mbps) const {
     return std::string(buf);
 }
 
+std::string Renderer::formatScaleValue(double value) const {
+    char buf[16];
+    if (value >= 1000.0) {
+        std::snprintf(buf, sizeof(buf), "%.1fk", value / 1000.0);
+    } else if (value >= 100.0) {
+        std::snprintf(buf, sizeof(buf), "%.0f", value);
+    } else if (value >= 10.0) {
+        std::snprintf(buf, sizeof(buf), "%.0f", value);
+    } else if (value >= 1.0) {
+        std::snprintf(buf, sizeof(buf), "%.1f", value);
+    } else if (value > 0.0) {
+        std::snprintf(buf, sizeof(buf), "%.1f", value);
+    } else {
+        std::snprintf(buf, sizeof(buf), "0");
+    }
+    return std::string(buf);
+}
+
 std::string Renderer::formatUptime(int seconds) const {
     if (seconds < 60) return std::to_string(seconds) + "s";
     int minutes = seconds / 60;
@@ -1630,6 +1648,30 @@ void Renderer::drawGraphPanel(int x, int y, int w, int h,
         color_t col = (r % 2 == 0) ? grid_major : grid_minor;
         drawLine(gx, py, gx + gw - 1, py, col);
     }
+
+    // Draw scale labels for both series with independent scales
+    float label_fs = 9.0f;
+    color_t label_color_a = scale_color(color_a, 0.6f);
+    color_t label_color_b = scale_color(color_b, 0.6f);
+
+    // Left labels for series A (NET1)
+    int label_x_left = x + 2;
+    std::string label_top_a = formatScaleValue(max_val_a);
+    std::string label_mid_a = formatScaleValue(max_val_a / 2.0);
+    std::string label_bot_a = formatScaleValue(min_val_a);
+    drawText(label_top_a, label_x_left, gy + 1, label_color_a, label_fs);
+    drawText(label_mid_a, label_x_left, gy + gh / 2 - 2, label_color_a, label_fs);
+    drawText(label_bot_a, label_x_left, gy + gh - 9, label_color_a, label_fs);
+
+    // Right labels for series B (NET2)
+    int label_x_right = gx + gw + 4;
+    std::string label_top_b = formatScaleValue(max_val_b);
+    std::string label_mid_b = formatScaleValue(max_val_b / 2.0);
+    std::string label_bot_b = formatScaleValue(min_val_b);
+    drawText(label_top_b, label_x_right, gy + 1, label_color_b, label_fs);
+    drawText(label_mid_b, label_x_right, gy + gh / 2 - 2, label_color_b, label_fs);
+    drawText(label_bot_b, label_x_right, gy + gh - 9, label_color_b, label_fs);
+
     color_t shadow_a = scale_color(color_a, 0.5f);
     color_t shadow_b = scale_color(color_b, 0.5f);
     drawSeriesLine(series_a, gx, gy, gw, gh, min_val_a, max_val_a, color_a, shadow_a, 2, metric_type_a, animator, time_sec);
